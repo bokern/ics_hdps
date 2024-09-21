@@ -33,6 +33,7 @@ bnf_snomed <- read.csv(file_path, header = TRUE, colClasses = "character") %>% d
 #left join code_browser with bnf_snomed
 code_map <- code_browser %>% 
   left_join(bnf_snomed, by = c("dmdid" = "id"))
+
 #create bnf_paragraph
 code_map$bnf_paragraph <- case_when(
   !is.na(code_map$bnf_code) & nchar(code_map$bnf_code) >= 6 ~ substr(code_map$bnf_code, 1, 6),
@@ -40,6 +41,12 @@ code_map$bnf_paragraph <- case_when(
   !is.na(code_map$BNFChapter) & nchar(code_map$BNFChapter) == 8 ~ substr(code_map$BNFChapter, 1, 6),
   TRUE ~ NA_character_
 )
+
+#pick out codes with bnf_paragraph = NA and sort on DrugIssues
+missing <- code_map %>% 
+  filter(is.na(bnf_paragraph)) %>% 
+  arrange(desc(DrugIssues)) %>% 
+  dplyr::select(ProdCodeId, dmdid, BNFChapter, Term.from.EMIS, DrugIssues)
 
 # Map specific terms to BNF paragraphs when bnf_paragraph is empty
 code_map$bnf_paragraph <- case_when(
@@ -69,6 +76,17 @@ code_map$bnf_paragraph <- case_when(
   TRUE ~ code_map$bnf_paragraph
 )
 
+#save codes that remain unmatched to drugs_counts_unmatched.csv
+unmatched <- code_map %>% 
+  filter(is.na(bnf_paragraph)) %>% 
+  dplyr::select(ProdCodeId, dmdid, BNFChapter, Term.from.EMIS, DrugIssues) %>% 
+  #select the top 100 unmatched codes by DrugIssues
+  arrange(desc(DrugIssues)) %>%
+  head(100)
+  
+#save to file
+write.csv(unmatched, file = file.path(HDPS_folder, "drugs_counts_unmatched.csv"), row.names = FALSE)
+
 code_map_exp <- code_map %>%  filter(!is.na(bnf_paragraph)) %>% 
   dplyr::select(ProdCodeId, bnf_paragraph) %>% 
   distinct()
@@ -81,13 +99,13 @@ code_map_exp$bnf_paragraph <- as.character(code_map_exp$bnf_paragraph)
 
 # Write to file, saving all variables as text
 file_path <- file.path(HDPS_folder, "map_prodcode_bnf.txt")
+
 #remove spaces
 code_map_exp$ProdCodeId <- gsub(" ", "", code_map_exp$ProdCodeId)
 
 # Write the data frame to txt, ensuring no scientific notation and all columns as text
 write.table(code_map_exp, file = file_path, row.names = FALSE, quote = TRUE, 
             fileEncoding = "UTF-8")
-
 
 #remove ICS, LABA and LAMA from drugs_all
 #load text codelists for the 3 drug classes 
@@ -100,7 +118,6 @@ read_first_part_of_lines <- function(filepath) {
   numeric_parts <- as.character(gsub("[^0-9]", "", first_parts))
   return(numeric_parts)
 }
-
 
 # Apply the function to each file
 ics_single_codes <- read_first_part_of_lines(file.path(Github_codelists, "cl_ics_single.txt"))
@@ -122,7 +139,7 @@ all_drugs_empty_bnf <- data.frame()
 drugs_all <- data.frame()
 
 for (file in drug_files) {
-  
+
   # Extract file number for naming
   file_num <- str_extract(basename(file), "\\d+")
   
@@ -133,52 +150,53 @@ for (file in drug_files) {
   drugs <- drugs[!(prodcodeid %in% all_codes)]
   # Merge with code_browser
   drugs <- drugs %>% 
-    left_join(code_browser, by = c("prodcodeid" = "ProdCodeId"))
-  
-  # Count number of empty values in dmdid and BNFChapter
-  print(paste("File", file_num, "- Empty dmdid:", sum(drugs$dmdid == "")))
-  print(paste("File", file_num, "- Empty BNFChapter:", sum(drugs$BNFChapter == "")))
-  # Merge with drugs on dmdid = SNOMED Code, keep BNF Code, BNF Name
-  drugs <- drugs %>%
-    left_join(bnf_snomed, by = c("dmdid" = "id")) %>%
-    dplyr::select(BNFChapter, bnf_code, everything())
-  
-  # Count if BNF Chapter and BNF Code are empty
-  print(paste("File", file_num, "- Empty BNFChapter and bnf_code:", sum(drugs$BNFChapter == "" & is.na(drugs$bnf_code))))
-  print(paste("File", file_num, "- Empty bnf_code:", sum(is.na(drugs$bnf_code))))
-  print(paste("File", file_num, "- Empty BNFChapter:", sum(drugs$BNFChapter == "")))
-  
-  # Create bnf_paragraph
-  drugs$bnf_paragraph <- case_when(
-    !is.na(drugs$bnf_code) & nchar(drugs$bnf_code) >= 6 ~ substr(drugs$bnf_code, 1, 6),
-    !is.na(drugs$BNFChapter) & nchar(drugs$BNFChapter) == 7 ~ str_pad(substr(drugs$BNFChapter, 1, 5), 6, side = "left", pad = "0"),
-    !is.na(drugs$BNFChapter) & nchar(drugs$BNFChapter) == 8 ~ substr(drugs$BNFChapter, 1, 6),
-    TRUE ~ NA_character_
-  )
-  
-  # Count if bnf_paragraph is empty
-  print(paste("File", file_num, "- Empty bnf_paragraph:", sum(is.na(drugs$bnf_paragraph))))
+    left_join(code_map, by = c("prodcodeid" = "ProdCodeId")) %>% 
+    dplyr::select(patid, bnf_paragraph, issuedate) %>% 
+    #rename BNFchapter to code
+    rename(code = bnf_paragraph)
+
+  # # Count number of empty values in dmdid and BNFChapter
+  # print(paste("File", file_num, "- Empty dmdid:", sum(drugs$dmdid == "")))
+  # print(paste("File", file_num, "- Empty BNFChapter:", sum(drugs$BNFChapter == "")))
+  # # Merge with drugs on dmdid = SNOMED Code, keep BNF Code, BNF Name
+  # drugs <- drugs %>%
+  #   left_join(bnf_snomed, by = c("dmdid" = "id")) %>%
+  #   dplyr::select(BNFChapter, bnf_code, everything())
+  # 
+  # # Count if BNF Chapter and BNF Code are empty
+  # print(paste("File", file_num, "- Empty BNFChapter and bnf_code:", sum(drugs$BNFChapter == "" & is.na(drugs$bnf_code))))
+  # print(paste("File", file_num, "- Empty bnf_code:", sum(is.na(drugs$bnf_code))))
+  # print(paste("File", file_num, "- Empty BNFChapter:", sum(drugs$BNFChapter == "")))
+  # 
+  # # Create bnf_paragraph
+  # drugs$bnf_paragraph <- case_when(
+  #   !is.na(drugs$bnf_code) & nchar(drugs$bnf_code) >= 6 ~ substr(drugs$bnf_code, 1, 6),
+  #   !is.na(drugs$BNFChapter) & nchar(drugs$BNFChapter) == 7 ~ str_pad(substr(drugs$BNFChapter, 1, 5), 6, side = "left", pad = "0"),
+  #   !is.na(drugs$BNFChapter) & nchar(drugs$BNFChapter) == 8 ~ substr(drugs$BNFChapter, 1, 6),
+  #   TRUE ~ NA_character_
+  # )
+  # 
+  # # Count if bnf_paragraph is empty
+  # print(paste("File", file_num, "- Empty bnf_paragraph:", sum(is.na(drugs$bnf_paragraph))))
   
   # Save cut of data with empty BNF Chapter and BNF Code
-  drugs_empty_bnf <- drugs %>% filter(is.na(drugs$bnf_paragraph))
+  drugs_empty_bnf <- drugs %>% filter(is.na(drugs$code))
   
   # Append drugs_empty_bnf to all_drugs_empty_bnf
   all_drugs_empty_bnf <- rbind(all_drugs_empty_bnf, drugs_empty_bnf)
  
   #remove rows with no bnf_paragraph from drugs_all
-  drugs <- drugs %>% filter(!is.na(bnf_paragraph))
+  drugs <- drugs %>% filter(!is.na(code))
   drugs_all <- rbind(drugs_all, drugs)
 }
-#order drugs_all by bnf_paragraph
-#drugs_all <- drugs_all[order(drugs_all$bnf_paragraph),]
 
 # After the loop, save the combined all_drugs_empty_bnf
 write_parquet(all_drugs_empty_bnf, "all_drugs_empty_bnf.parquet")
 
 #drop bnf_code and BNFChapter from drugs_all
-drugs_all <- drugs_all %>% dplyr::select(c(patid, bnf_paragraph, issuedate))
+#drugs_all <- drugs_all %>% dplyr::select(c(patid, bnf_paragraph, issuedate))
 
 setwd(Datadir_copd)
-#rename bnf_code to code
-drugs_all <- rename(drugs_all, code = bnf_paragraph)
+
 write_parquet(drugs_all, "drugs_for_hdps_mapped.parquet")
+
