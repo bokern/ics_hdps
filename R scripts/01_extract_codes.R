@@ -23,7 +23,6 @@ setwd(Datadir_copd)
 
 n_obs_files <- 48
 n_drug_files <- 49
-#n_hes_files <- 
   
 #read patient file copd_Patid_list_included_all.dta
 patid_list <- read.dta13("copd_Patid_list_included_all.dta")
@@ -168,8 +167,3 @@ for (file in hes_files) {
 
 end_time3 <- Sys.time()
 run_time3 <- end_time3 - start_time3
-
-# #read in drugs file 1
-# setwd(Copd_aurum_extract)
-# drugs1 <- read_parquet("Drugs_for_hdps_1.parquet")
-# obs1 <- read_parquet("Observations_for_hdps_1.parquet")
