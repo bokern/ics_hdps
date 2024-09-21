@@ -15,7 +15,6 @@ invisible(lapply(packages, function(pkg) {
   suppressMessages(library(pkg, character.only = TRUE, verbose = FALSE))
 }))
 
-
 setwd(Datadir_copd)
 patid_list <- read.dta13("copd_Patid_list_included_all.dta")
 
@@ -29,7 +28,7 @@ code_map <- read.dta13(file_path, convert.factors = FALSE)
 # import CPRD code_browser as string variables
 file_path <- file.path(Denominator, "CPRD Aurum", "Code browsers", "2022_05" , "CPRDAurumMedical.txt")
 code_browser <- read.delim(file_path, sep = "\t", header = TRUE, colClasses = "character") %>% 
-  select(MedCodeId, SnomedCTConceptId, Term)
+  dplyr::select(MedCodeId, SnomedCTConceptId, Term)
 
 #join code browser and code map on snomed
 codes <- code_browser %>% 
@@ -52,6 +51,7 @@ obs_ever_mapped <- NULL
 obs_ever_unmatched <- NULL
 
 for (file in obs_files) {
+
   print(file)
   obs <- arrow::read_parquet(file)
   obs <- setDT(obs)
@@ -63,6 +63,9 @@ for (file in obs_files) {
   
   #merge with code lookup on medcodeid
   obs <- merge(obs, codes, by.x = "medcodeid", by.y = "MedCodeId", all.x = TRUE)
+  
+  #remove U07 codes from obs
+  obs <- obs[obs$icd10 != "U07", ]
 
   #to create obs_ever, remove any duplicates in terms of patid and medcodeid to check for unmatched medcodes
   obs_ever <- obs[, c("patid", "medcodeid", "icd10")]
@@ -93,6 +96,7 @@ for (file in obs_files) {
     obs_mapped <- rbind(obs_mapped, obs[!is.na(icd10)])
     obs_unmatched <- rbind(obs_unmatched, obs[is.na(icd10)])
   }
+  
   rm(obs)
   rm(obs_ever)
   gc()
