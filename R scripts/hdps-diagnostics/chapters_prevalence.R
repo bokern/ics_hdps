@@ -1,9 +1,9 @@
 ###########################################################
-# R script:    001_highLevelConceptsSummary.R
+# R script:    chapters_prevalence.R
 #
-# Author:      John Tazare (modified by Assistant)
+# Author:      Marleen Bokern
 #
-# Date:        [Current Date]
+# Date:        Sep 2024
 #
 # Description: Plot for summarising high-level concepts in
 #              the Top N ranked HDPS covariates separated
@@ -26,9 +26,9 @@ invisible(lapply(packages, function(pkg) {
 exclude_triple = F
 
 if (exclude_triple == TRUE) {
-  output_ext <- "_no_triple"
+  cohort_ext <- "_no_triple"
 } else {
-  output_ext <- ""
+  cohort_ext <- ""
 }
 
 # Set working directory (you need to define HDPS_folder)
@@ -41,13 +41,13 @@ topVars <- c("100", "250", "500", "750", "1000")
 
 
 outcomes <- c("covid_hes_present", "covid_death_present")
-output_exts <- c("", "_no_triple")
+cohort_exts <- c("", "_no_triple")
 
- for (output_ext in output_exts) {
+ for (cohort_ext in cohort_exts) {
    for (outcome in outcomes) {
      for (k in topVars) {
-        #  browser()
-       print(paste0("Processing ", k, " ", outcome, " ", output_ext))
+#browser()
+       print(paste0("Processing ", k, " ", outcome, " ", cohort_ext))
       # Load data from outputs folder
       data <- read.csv(paste0(
         HDPS_folder,
@@ -55,41 +55,41 @@ output_exts <- c("", "_no_triple")
         k,
         "_HDPS_",
         outcome,
-        output_ext,
+        cohort_ext,
         ".csv"
       ))
    
       # Function to assign chapters to ICD and BNF codes
-      assign_chapter <- function(code) {
+      assign_chapter <- function(variable) {
         # For ICD codes
-        if (grepl("^[A-Z]", code)) {
-          if (substr(code, 1, 1) == "D" &&
-              as.numeric(substr(code, 2, 3)) <= 49)
+        if (grepl("^[A-Z]", variable)) {
+          if (substr(variable, 1, 1) == "D" &&
+              as.numeric(substr(variable, 2, 3)) <= 49)
             return("D48")  # Neoplasms
-          if (substr(code, 1, 1) == "D" &&
-              as.numeric(substr(code, 2, 3)) >= 50)
+          if (substr(variable, 1, 1) == "D" &&
+              as.numeric(substr(variable, 2, 3)) >= 50)
             return("D89")  # Diseases of the blood...
-          if (substr(code, 1, 1) == "H" &&
-              as.numeric(substr(code, 2, 3)) <= 59)
+          if (substr(variable, 1, 1) == "H" &&
+              as.numeric(substr(variable, 2, 3)) <= 59)
             return("H59")  # Diseases of the eye and adnexa
-          if (substr(code, 1, 1) == "H" &&
-              as.numeric(substr(code, 2, 3)) >= 60)
+          if (substr(variable, 1, 1) == "H" &&
+              as.numeric(substr(variable, 2, 3)) >= 60)
             return("H95")  # Diseases of the ear and mastoid process
-          return(substr(code, 1, 1))  # For other ICD codes, return the first character
+          return(substr(variable, 1, 1))  # For other ICD variables, return the first character
         }
         
         # For BNF codes
-        if (grepl("^[0-9]", code)) {
-          return(substr(code, 1, 2))  # Return first two digits for BNF codes
+        if (grepl("^[0-9]", variable)) {
+          return(substr(variable, 1, 2))  # Return first two digits for BNF codes
         }
         
         # If code doesn't match expected patterns, return the first character
-        return(substr(code, 1, 1))
+        return(substr(variable, 1, 1))
       }
       
       # Process data
-      data$dim <- as.factor(as.numeric(substr(data$code, 2, 2)))
-      data$chapter <- sapply(substr(data$code, 4, nchar(data$code)), assign_chapter)
+      data$dim <- as.factor(as.numeric(substr(data$variable, 2, 2)))
+      data$chapter <- sapply(substr(data$variable, 4, nchar(data$variable)), assign_chapter)
       
       # Create summary dataset
       summary_df <- data %>%
@@ -206,7 +206,7 @@ output_exts <- c("", "_no_triple")
       summary_df$description <- chapter_descriptions[as.character(summary_df$chapter_ind)]
       
       #remove chapter
-      summary_df <- summary_df %>% select(-chapter)
+      summary_df <- summary_df %>% dplyr::select(-chapter)
       # combine rows with the same chapter indicator, sum the total and keep the description
       summary_df <- summary_df %>%
         group_by(dim, chapter_ind, description) %>%
@@ -326,7 +326,7 @@ output_exts <- c("", "_no_triple")
         HDPS_folder,
         "outputs",
         "diagnostics",
-        paste0("conceptsPlot_top", k, outcome, output_ext, ".png")
+        paste0("conceptsPlot_top", k, outcome, cohort_ext, ".png")
       )
       ggsave(file_path, p, width = 16, height = 16)
       
