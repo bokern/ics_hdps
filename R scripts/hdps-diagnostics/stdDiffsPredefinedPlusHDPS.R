@@ -115,14 +115,28 @@ for (cohort_ext in cohort_exts) {
       # Ensure var_label is correctly referenced here; you might need to adjust how you're creating custom_labels
       custom_labels <- unique(data$var_label) # Assuming you want unique labels from var_label
       
+      calculate_icon_size <- function(k) {
+        if (k <= 100) {
+          return(2.5)
+        } else if (k <= 500) {
+          return(1.8)
+        } else if (k <= 1000) {
+          return(1)
+        } else {
+          return(0.5)
+        }
+      }
+      
+      icon_size <- calculate_icon_size(k)
+      
       # Create the main plot without x-axis labels for HDPS covariates
       p <- ggplot(data) +
         geom_point(aes(x = adjusted_rank, y = smd_unweighted, color = "Unweighted"), 
-                   shape = 16, alpha = 1, size = 2) +
+                   shape = 16, alpha = 1, size = icon_size) +
         geom_point(aes(x = adjusted_rank, y = smd_weighted, color = "HDPS-Weighted"), 
-                   shape = 18, alpha = 1, size = 2) +
+                   shape = 18, alpha = 1, size = icon_size) +
         geom_point(aes(x = adjusted_rank, y = smd_weighted_predefined, color = "Predefined Covariates"), 
-                   shape = 17, alpha = 1, size = 2) +
+                   shape = 17, alpha = 1, size = icon_size) +
         scale_x_continuous(
           expand = c(0.02, 0.02)
         ) +
