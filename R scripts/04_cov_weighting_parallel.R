@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
 # PROGRAM NAME:  04_cov_weighting_parallel
-# PROJECT:      xzx26005
+# PROJECT:      
 # AUTHOR:        John Tazare, Marleen Bokern
 # DATE CREATED:   10 Sep 2020
-# NOTES:        high-dimensional Propensity Score Analysis for ACNU:
+# NOTES:        high-dimensional Propensity Score Analysis
 #                                  1. Summarise baseline covariates
 #                                  2. Estimate propensity score
 #                                  3. Propensity score matching and evaluation
@@ -15,7 +15,7 @@
 debugMode <- F
 
 #determine maximum memory allocation possible
-memory.limit(size = 10000)
+memory.limit(size = 20000)
 
 # Load libraries -------------------------------------------------------------
 
@@ -61,7 +61,7 @@ cov_weighting <- function(params) {
   cohort_ext <- params$cohort_ext
   outcome <- params$outcome
   k <- params$topVar
-
+  
   print(paste("Analyzing outcome:", outcome))
   
   timeinstudy <- switch(outcome,
@@ -418,6 +418,15 @@ cov_weighting <- function(params) {
   
   hdpsData$pscore <- predict(psModel, type = "response")
   
+  # histogram of propensity scores by treatment group
+  hdpsData %>%
+    ggplot(aes(x = pscore, fill = factor(treatgroup))) +
+    geom_density(alpha = 0.5) +
+    labs(x = "Propensity score", y = "Density", title = "Propensity score distribution by treatment group") +
+    scale_fill_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
+    theme_minimal() +
+    theme(legend.title = element_blank())
+  
   #save min and max propensity scores in each treatment group, save limits of area of common support
   ps_trim <- hdpsData %>%
     dplyr::select(treatgroup, pscore) %>%
@@ -437,20 +446,25 @@ cov_weighting <- function(params) {
   )
   
   # Add the stabilized weights to the dataset
-  hdpsData$iptw_weight_stabilized <- ate_stabilized$weights
+  hdpsData$iptw_weight <- ate_stabilized$weights
+  hdpsData <- hdpsData %>% dplyr::select(patid, pscore, iptw_weight, everything())
   
   #put people outside of common support in a separate dataframe
   hdpsOutOfSupport_hdps <- hdpsData %>%
     filter(pscore < ps_trim$min | pscore > ps_trim$max)
+  
+  #move pscore, iptw_weight to the start of the dataframe
+  hdpsOutOfSupport_hdps <- hdpsOutOfSupport_hdps %>%
+    dplyr::select(patid, pscore, iptw_weight, everything())
   
   #save total number of people outside of common support, number of people outside of common support in each treatment group and their weights
   hdpsOutOfSupportSummary_hdps <- hdpsOutOfSupport_hdps %>%
     group_by(treatgroup) %>%
     summarise(
       n = n(),
-      sum_weight = sum(iptw_weight_stabilized),
-      avg_weight = mean(iptw_weight_stabilized),
-      median_weight = median(iptw_weight_stabilized)
+      sum_weight = sum(iptw_weight),
+      avg_weight = mean(iptw_weight),
+      median_weight = median(iptw_weight)
     ) %>%
     ungroup() %>%
     summarise(
@@ -512,11 +526,21 @@ cov_weighting <- function(params) {
     width = 6
   )
   
-  # Propensity Score Weighting  ----------------------------------------------
+  # IPTW Propensity Score Weighting  ----------------------------------------------
   
-  #IPTW
+  #percentage of poeple in treatment group 1
+  # Calculate the counts for each treatment group
+  counts <- hdpsPredefinedVars %>%
+    group_by(treatgroup) %>%
+    summarise(count = n())
+  
+  # Save the percentages
+  total_count <- sum(counts$count)
+  p_LABA_LAMA <- counts$count[counts$treatgroup == "0"] / total_count 
+  p_ICS <- counts$count[counts$treatgroup == "1"] / total_count 
+  
   hdpsData <- hdpsData %>%
-    mutate(iptw_weight = case_when(treatgroup == 1 ~ 1 / pscore, treatgroup == 0 ~ 1 / (1 - pscore)))
+    mutate(iptw_weight = case_when(treatgroup == 1 ~ p_ICS / pscore, treatgroup == 0 ~ p_LABA_LAMA / (1 - pscore)))
   
   # plot the weights by treatment group
   plot <- hdpsData %>%
@@ -703,6 +727,70 @@ cov_weighting <- function(params) {
     )
   )
   
+  # Original code for overall SMD calculation and output
+  extract_smd <- function(tableone_obj, label) {
+    smd_data <- as.data.frame(print(tableone_obj, smd = TRUE, printToggle = FALSE))
+    smd_data$Variable <- rownames(smd_data)
+    smd_data$Iteration <- label
+    smd_data <- smd_data %>%
+      dplyr::select(Iteration, Variable, SMD)
+    return(smd_data)
+  }
+  
+  smd_combined <- extract_smd(tabUnweighted, paste0("Unweighted_", k, "_", outcome)) %>%
+    rename(smd_unweighted = SMD) %>%
+    left_join(extract_smd(tabWeighted, paste0("Weighted_", k, "_", outcome)) %>%
+                rename(smd_weighted = SMD),
+              by = c("Variable")) %>%
+    left_join(
+      extract_smd(
+        tabWeighted_predefined,
+        paste0("Predefined_Weighted_", k, "_", outcome)
+      ) %>%
+        rename(smd_weighted_predefined = SMD),
+      by = c("Variable")
+    ) %>%
+    mutate_at(vars(contains("smd")), ~ ifelse(. == "<0.001", 0.0001, .)) %>%
+    mutate(
+      analysis = paste0(k, "_", outcome),
+      smd_unweighted = as.numeric(smd_unweighted),
+      smd_weighted = as.numeric(smd_weighted),
+      smd_weighted_predefined = as.numeric(smd_weighted_predefined)
+    ) %>%
+    dplyr::select(analysis,
+                  Variable,
+                  smd_unweighted,
+                  smd_weighted,
+                  smd_weighted_predefined)
+  
+  # Save overall SMDs to a CSV file
+  write_csv(
+    smd_combined,
+    paste0(
+      HDPS_folder,
+      "/outputs/HDPS_",
+      k,
+      "_SMD_",
+      outcome,
+      cohort_ext,
+      "_trimmed.csv"
+    )
+  )
+  
+  # Save the HDPS data to a parquet file
+  write_parquet(
+    hdpsData,
+    paste0(
+      HDPS_folder,
+      "/outputs/HDPS_",
+      k,
+      "_",
+      outcome,
+      cohort_ext,
+      "_trimmed.parquet"
+    )
+  )
+  
   #save the HDPS data to a parquet file
   write_parquet(
     hdpsData,
@@ -756,3 +844,4 @@ trimming_results_full <- lapply(
   write_csv(
     paste0(HDPS_folder, "/outputs/trimming_results_full.csv")
   )
+
