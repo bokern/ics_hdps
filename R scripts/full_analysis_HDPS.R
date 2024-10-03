@@ -46,4 +46,12 @@ source("chapters_prevalence_extra_codes.R")
 setwd(paste0(HDPS_github, "/hdps-diagnostics"))
 source("stdDiffsPredefinedPlusHDPS.R")
 
+setwd(HDPS_folder)
+source("03_assess_recurrence_multioutcome_no_triple_check.R")
+Sys.time()
+setwd(HDPS_folder)
+source("04_cov_weighting_parallel_check.R")
+Sys.time()
+setwd(HDPS_folder)
+source("05_effect_estimation_check.R")
 
