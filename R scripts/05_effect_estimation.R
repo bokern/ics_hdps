@@ -14,13 +14,6 @@
 # selected at random
 debugMode = F
 
-exclude_triple = T
-
-if (exclude_triple == TRUE) {
-  cohort_ext <- "_no_triple"
-} else {
-  cohort_ext <- ""
-}
 # Load libraries -------------------------------------------------------------
 
 packages <- c(
@@ -62,6 +55,7 @@ for (cohort_ext in cohort_exts) {
   # Iterate through each outcome
   for (outcome in outcomes) {
     
+    
     print(paste("Analyzing outcome:", outcome))
     
     timeinstudy <- switch(outcome,
@@ -77,7 +71,7 @@ for (cohort_ext in cohort_exts) {
     follow_up_times <- pat_summary_data %>% dplyr::select("patid", timeinstudy)
     
     
-    if (exclude_triple == TRUE) {
+    if (cohort_ext == "_no_triple") {
       pat_summary_data <- pat_summary_data %>%
         filter(baseline_triple == 0)
     }
@@ -154,23 +148,25 @@ for (cohort_ext in cohort_exts) {
         "_trimmed.parquet"
       )
     )
-    #   browser()
+    
     #read in parquet file
     hdpsPredefinedVars <- read_parquet(file_path_predefined)
+    
     #merge in outcome
     hdpsPredefinedVars <- hdpsPredefinedVars %>%
       left_join(pat_summary_data %>% dplyr::select(patid, .data[[outcome]]), by = "patid")
     
     hdpsPredefinedVars$treatgroup <- relevel(hdpsPredefinedVars$treatgroup, ref = "0")
+    
     #run unweighted and analysis weighted using predefined variables
     
     # Estimate Treatment Effect (unweighted)
     surv_obj <- Surv(time = hdpsPredefinedVars[[timeinstudy]], event = hdpsPredefinedVars[[outcome]])
     # Unweighted Analysis
-    hdpsUnweighted <- coxph(surv_obj ~ treatgroup, data = hdpsPredefinedVars)
+    PredefinedUnweighted <- coxph(surv_obj ~ treatgroup, data = hdpsPredefinedVars)
     
     #plot schoenfeld residuals
-    schoenfeld_residuals <- cox.zph(hdpsUnweighted)
+    schoenfeld_residuals <- cox.zph(PredefinedUnweighted)
     
     all_schoenfeld_residuals[[paste("Unweighted", cohort_ext, outcome)]] <- data.frame(
       model = "Unweighted",
@@ -208,7 +204,7 @@ for (cohort_ext in cohort_exts) {
       risk.table = "absolute",
       risk.table.title = "Number at risk",
       cumevents = TRUE,
-      fontsize = 13,
+      fontsize = 7,
       tables.height = 0.15,
       legend.labs = c("LABA/LAMA", "ICS"),
       legend.title = "",
@@ -233,7 +229,15 @@ for (cohort_ext in cohort_exts) {
     ggsurvplot$plot$theme$legend.text$size <- 28
     ggsurvplot$plot$theme$legend.key.size <- unit(4, "lines")
     
-    # Save the main plot
+    # Combine the main plot, risk table, and cumulative events
+    combined_plot <- ggarrange(
+      ggsurvplot$plot, 
+      ggsurvplot$table, 
+      ggsurvplot$cumevents,
+      nrow = 3,
+      heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
+    )
+    # Save the combined plot (main plot + risk table + cumulative events)
     file_path <- file.path(
       HDPS_folder,
       "outputs",
@@ -241,9 +245,9 @@ for (cohort_ext in cohort_exts) {
     )
     ggsave(
       file_path,
-      ggsurvplot$plot,
+      combined_plot,
       width = 30,
-      height = 20,
+      height = 30,  # Adjust height for all components
       units = "cm"
     )
     
@@ -251,7 +255,7 @@ for (cohort_ext in cohort_exts) {
     # Unweighted Logistic Regression
     logistic_unweighted <- glm(as.formula(paste(outcome, "~ treatgroup")),
                                data = hdpsPredefinedVars,
-                               family = binomial(link = "logit"))
+                               family = "binomial")
     
     # Calculate the residuals
     residuals <- residuals(logistic_unweighted)
@@ -304,12 +308,14 @@ for (cohort_ext in cohort_exts) {
       risk.table = "absolute",
       risk.table.title = "Number at risk",
       cumevents = TRUE,
-      fontsize = 13,
+      digits = 2,
+      fontsize = 7,
       tables.height = 0.15,
       legend.labs = c("LABA/LAMA", "ICS"),
       legend.title = "",
       palette = c(palette[4], palette[9]),
       xlim = c(0, 183))
+    ggsurvplot$cumevents$layers[[1]]$data$cum.n.event <- round(ggsurvplot$cumevents$layers[[1]]$data$cum.n.event, 2)
     ggsurvplot$plot <- ggsurvplot$plot + scale_x_continuous(breaks = c(0, 50, 100, 150, 183))
     ggsurvplot$table$theme$axis.text.y$colour <- "black"
     ggsurvplot$table$theme$axis.text.y$size <- 24
@@ -339,11 +345,19 @@ for (cohort_ext in cohort_exts) {
         "_weighted_predefined.png"
       )
     )
+    # Combine the main plot, risk table, and cumulative events
+    combined_plot <- ggarrange(
+      ggsurvplot$plot, 
+      ggsurvplot$table, 
+      ggsurvplot$cumevents,
+      nrow = 3,
+      heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
+    )
     ggsave(
       file_path,
-      ggsurvplot$plot,
+      combined_plot,
       width = 30,
-      height = 20,
+      height = 30,
       units = "cm")
     
     #plot schoenfeld residuals
@@ -411,7 +425,6 @@ for (cohort_ext in cohort_exts) {
     
     dev.off()
     
-    
     all_results <- data.frame(
       Covariates = character(),
       Results = character(),
@@ -426,7 +439,7 @@ for (cohort_ext in cohort_exts) {
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Unweighted",
-                           Results = ShowRegTable(hdpsUnweighted, printToggle = FALSE)))
+                           Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE)))
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Predefined",
@@ -442,6 +455,7 @@ for (cohort_ext in cohort_exts) {
                                 Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE)))
     
     for (k in topVars) {
+      # k <- "250"
       print(paste("Analyzing top", k, "variables"))
       
       # Read in parquet file
@@ -456,6 +470,10 @@ for (cohort_ext in cohort_exts) {
           "_trimmed.parquet"
         )
       )
+      
+      #move patid, pscore and iptw to the front
+      hdpsData <- hdpsData %>%
+        dplyr::select(patid, pscore, iptw_weight, everything())
       
       # Estimate Treatment Effect -----------------------------------------------
       #merge follow-up times in if not present
@@ -478,6 +496,7 @@ for (cohort_ext in cohort_exts) {
       hdpsData[[timeinstudy]] <- as.numeric(hdpsData[[timeinstudy]])
       
       hdpsData$treatgroup <- relevel(hdpsData$treatgroup, ref = "0")
+      
       # Estimate Treatment Effect for predefined covariates
       surv_obj <- Surv(time = hdpsData[[timeinstudy]], event = hdpsData[[outcome]])
       
@@ -505,13 +524,14 @@ for (cohort_ext in cohort_exts) {
         risk.table = "absolute",
         risk.table.title = "Number at risk",
         cumevents = TRUE,
-        fontsize = 13,
+        fontsize = 7,
         tables.height = 0.15,
         legend.labs = c("LABA/LAMA", "ICS"),
         legend.title = "",
         palette = c(palette[4], palette[9]),
         xlim = c(0, 183)
       )
+      ggsurvplot$cumevents$layers[[1]]$data$cum.n.event <- round(ggsurvplot$cumevents$layers[[1]]$data$cum.n.event, 2)
       ggsurvplot$plot <- ggsurvplot$plot + scale_x_continuous(breaks = c(0, 50, 100, 150, 183))
       ggsurvplot$table$theme$axis.text.y$colour <- "black"
       ggsurvplot$table$theme$axis.text.y$size <- 24
@@ -536,12 +556,21 @@ for (cohort_ext in cohort_exts) {
         "outputs",
         paste0("km_curve_", outcome, "_", k, "_HDPS", cohort_ext, ".png")
       )
+      # Combine the main plot, risk table, and cumulative events
+      combined_plot <- ggarrange(
+        ggsurvplot$plot, 
+        ggsurvplot$table, 
+        ggsurvplot$cumevents,
+        nrow = 3,
+        heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
+      )
       ggsave(
         file_path,
-        ggsurvplot$plot,
+        combined_plot,
         width = 30,
-        height = 20,
+        height = 30,
         units = "cm")
+      
       
       #plot schoenfeld residuals
       schoenfeld_residuals <- cox.zph(hdpsWeighted)
@@ -630,6 +659,7 @@ for (cohort_ext in cohort_exts) {
       
       # remove rows with the rowname Intercept from the logistic regression results
       logistic_results <- logistic_results[!grepl("Intercept", rownames(logistic_results)), ]
+      
     }
     
     # Clean up
