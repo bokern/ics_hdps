@@ -31,12 +31,11 @@ invisible(lapply(packages, function(pkg) {
 }))
 
 set.seed(123)
-# Flag to enable debugging; if TRUE, script will only be run on 1,000 patients
-# selected at random
+# Flag to enable debugging; if TRUE, script will only be run on 1,000 patients selected at random
 debugMode = F
 
-sample_size <- 10000
-exclude_triple <- F
+sample_size <- 1000
+exclude_triple <- T
 gc()
 
 if (exclude_triple == TRUE) {
@@ -66,57 +65,57 @@ if (exclude_triple == TRUE) {
   pat_summary_data <- pat_summary_data %>%
     filter(baseline_triple == 0)
 }
-    
+
 # Clinical
 dimension <- "observations"
-clinicalDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+clinicalDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
 
 if (debugMode == TRUE) {
   unique_patids <- unique(clinicalDim$patid)
-  sample_size <- min(5000, length(unique_patids))
+  sample_size <- min(1000, length(unique_patids))
   clinicalDim <- clinicalDim %>%
     filter(patid %in% sample(unique_patids, sample_size))
 }
 
-clinicalEvs <- read_parquet(paste0(dimension, "_for_HDPS_ever_mapped.parquet")) %>%
+clinicalEvs <- read_parquet(paste0(dimension, "_for_hdps_ever_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
 
 if (debugMode == TRUE) {
   unique_patids <- unique(clinicalEvs$patid)
-  sample_size <- min(5000, length(unique_patids))
+  sample_size <- min(1000, length(unique_patids))
   clinicalEvs <- clinicalEvs %>%
     filter(patid %in% sample(unique_patids, sample_size))
 }
 
 # Therapy
 dimension <- "drugs"
-therapyDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+therapyDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
 
 if (debugMode == TRUE) {
   unique_patids <- unique(therapyDim$patid)
-  sample_size <- min(5000, length(unique_patids))
+  sample_size <- min(1000, length(unique_patids))
   therapyDim <- therapyDim %>%
     filter(patid %in% sample(unique_patids, sample_size))
 }
 
 # Hospital
 dimension <- "HES"
-hospDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+hospDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
 
 if (debugMode == TRUE) {
   unique_patids <- unique(hospDim$patid)
-  sample_size <- min(10000, length(unique_patids))
+  sample_size <- min(1000, length(unique_patids))
   hospDim <- hospDim %>%
     filter(patid %in% sample(unique_patids, sample_size))
 }
@@ -178,20 +177,19 @@ exclude_vars <- c(
   "smokstatus")
 
 # Remove the specified variables from the dataframe
-hdpsCovariates <- pat_summary_data %>% select(-all_of(exclude_vars))
+hdpsCovariates <- pat_summary_data %>% dplyr::select(-all_of(exclude_vars))
 
 # Save hdpsCovariates to a Parquet file in the HDPS_folder/outputs directory
 write_parquet(hdpsCovariates, 
               file.path(HDPS_folder, "outputs", paste0("covariates_no_hdps", output_ext, ".parquet")))
 
-hdpsCohort <- pat_summary_data %>% select(
+hdpsCohort <- pat_summary_data %>% dplyr::select(
   "patid",
   "treatgroup",
   "covid_hes_present",
   "covid_death_present",
   "baseline_triple"
 )
-
 
 # #### Step 2: Sort codes by prevalence within each dimension -------------
 
@@ -202,7 +200,7 @@ denom <- nrow(hdpsCohort)
 dimNum <- c(1, 2, 3)
 
 for (x in dimNum) {
-  #  browser()
+
   if (x == 1) {
     dimension <- clinicalDim
     nam <- paste("prevClinical")
@@ -232,11 +230,11 @@ for (x in dimNum) {
     ungroup() %>%
     mutate(prev = n / denom) %>%
     mutate(prev = if_else(prev > 0.5, 1 - prev, prev)) %>%
-    mutate(rank = dense_rank(-prev)) %>%
+    mutate(rank = dense_rank(-prev)) %>% #dense_rank assigns consecutive ranks (i.e., if there are multiple rows with equal prev, )
     arrange(rank) %>%
     mutate(dim = x) %>%
     # restrict to top 500 in each dimension
-    filter(rank <= 500) #!!!!!!!!!!!!!!!!!!!! Do we need?
+    filter(rank <= 500)
   
   assign(nam, prev)
   
@@ -265,14 +263,8 @@ for (x in dimNum) {
   
 }
 
-# Filter the ever dims
-prev <- rbind(prevClinical, prevTherapy, prevHosp)
-
 clinicalEvs <- clinicalEvs %>%
-  filter(code %in% !!prev$code)
-
-#generate dim = 4 for ever codes
-clinicalEvs <- clinicalEvs %>%
+  filter(code %in% !!prevClinical$code) %>%
   mutate(dim = 4)
 
 # Incorporate ever information
@@ -308,62 +300,60 @@ rm(list = ls()[!ls() %in% c(
   "codeTots",
   "codeDists",
   "prev",
-  "period"
+  "period",
+  "HDPS_github"
 )])
-
-# Initialize codes_dim data table
-codes_dim <- data.table()
 
 # Convert to data.tables for faster processing
 setDT(codeDists)
 setDT(codeTots)
 setDT(hdpsCohort)
 
-# Function to process each code
 process_code <- function(code_row) {
+
   codeInfo <- code_row
   dim_suffix <- paste0("d", codeInfo$dim, "_")
   
-  if (codeInfo$dim != "4") {
-    codeOnce <- paste0(dim_suffix, codeInfo$code, "_once")
-  } else {
-    codeOnce <- paste0(dim_suffix, codeInfo$code, "_ever")
-  }
-  
+  codeOnce <- paste0(dim_suffix, codeInfo$code, "_once")
   codeSpor <- paste0(dim_suffix, codeInfo$code, "_spor")
   codeFreq <- paste0(dim_suffix, codeInfo$code, "_freq")
   
   # Filter codeTots for the specific code
-  codeTemp <- codeTots[code == codeInfo$code]
+  codeTemp <- codeTots[code == codeInfo$code & dim == codeInfo$dim,]
   
-  # Calculate variables
   result <- codeTemp[, .(
-    temp_once = as.integer(.N >= 1),
-    temp_spor = if (!codeInfo$dropQ2)
-      as.integer(.N >= codeInfo$q2)
-    else
-      NA,
-    temp_freq = if (!codeInfo$dropQ3)
-      as.integer(.N >= codeInfo$q3)
-    else
-      NA
+    temp_once = as.integer(n >= 1),
+    temp_spor = if (!codeInfo$dropQ2) as.integer(n >= codeInfo$q2) else NA_integer_,
+    temp_freq = if (!codeInfo$dropQ3) as.integer(n >= codeInfo$q3) else NA_integer_
   ), by = patid]
   
-  # Rename columns
-  setnames(result,
-           c("temp_once", "temp_spor", "temp_freq"),
-           c(codeOnce, codeSpor, codeFreq))
+  # Remove temp columns that contain only NAs
+  result <- result %>%
+    dplyr::select(where(~!all(is.na(.))))
   
-  # Remove NA columns
-  result <- result[, which(unlist(lapply(result, function(x)
-    ! all(is.na(
-      x
-    ))))), with = FALSE]
+  # Create new_names vector, excluding empty entries
+  new_names <- c(codeOnce, 
+                 if (!codeInfo$dropQ2 && !all(is.na(result$temp_spor))) codeSpor else character(0), 
+                 if (!codeInfo$dropQ3 && !all(is.na(result$temp_freq))) codeFreq else character(0))
+  new_names <- new_names[new_names != ""]
   
-  # Create new rows for codes_dim
-  new_rows <- data.table(code = setdiff(names(result), "patid"), dim = codeInfo$dim)
+  # Rename columns, matching the number of columns in result (excluding patid)
+  setnames(result, c("patid", new_names))
   
-  list(result = result, new_rows = new_rows)
+  # If this is a dimension 4 code, update or add d1_xxx_once
+  if (codeInfo$dim == "4") {
+    d1_code_once <- paste0("d1_", codeInfo$code, "_once")
+    if (d1_code_once %in% names(result)) {
+      # If d1_xxx_once already exists, update it
+      result[, (d1_code_once) := pmax(get(d1_code_once), get(codeOnce))]
+    } else {
+      # If d1_xxx_once doesn't exist, add it
+      result[, (d1_code_once) := get(codeOnce)]
+      new_names <- c(d1_code_once, new_names)
+    }
+  }
+
+  return(result)
 }
 
 # Set up parallel processing
@@ -378,28 +368,26 @@ results <- future_lapply(seq_len(nrow(codeDists)), function(i) {
 # Remove any NULL results
 results <- results[!sapply(results, is.null)]
 
-starttime1 <- Sys.time()
-# Combine results
-processed_data <- Reduce(function(x, y)
-  merge(x, y$result, by = "patid", all = TRUE),
-  c(list(data.table(
-    patid = unique(codeTots$patid)
-  )), results))
+processed_data <- rbindlist(results, use.names = TRUE, fill = TRUE)
+# Ensure one row per patient by taking the maximum value for each column
+processed_data <- processed_data[, lapply(.SD, max, na.rm = TRUE), by = patid]
+
+#export the results to parquet
+write_parquet(processed_data, file.path(HDPS_folder, "outputs", paste0("cohort_hdps_covariates", output_ext, ".parquet")))
+processed_data <- read_parquet(file.path(HDPS_folder, "outputs", paste0("cohort_hdps_covariates", output_ext, ".parquet")))
+
+#check if there are any columns that are all NA in processed_data
+if (any(colSums(is.na(processed_data)) == nrow(processed_data))) {
+  stop("There are columns that are all NA in processed_data")
+}
 
 # Update hdpsCohort
 hdpsCohort <- merge(hdpsCohort, processed_data, by = "patid", all.x = TRUE)
+
 # Fill NA values with 0
 hdpsCohort[is.na(hdpsCohort)] <- 0
 
-# Create codes_dim
-codes_dim <- rbindlist(lapply(results, function(x)
-  x$new_rows))
-
-endtime1 <- Sys.time()
-runtime1 <- endtime1 - starttime1
 # Clean up
-rm(results)
-
 rm(list = setdiff(
   ls(),
   c(
@@ -414,78 +402,76 @@ rm(list = setdiff(
     "codeDists",
     "prev",
     "period",
-    "codes_dim")
+    "HDPS_github")
 ))
 
 gc()
 
 # Ranking confounders for potential for causing bias
-
 columns_to_include <- setdiff(names(hdpsCohort), "treatgroup")
 
-exposed <- "treatgroup"
-outcome <- c("covid_hes_present", "covid_death_present")
-vars <- colnames(hdpsCohort[, !names(hdpsCohort) %in% c("patid",
-                                                        "indexdate",
-                                                        "baseline_triple",
-                                                        "dim",
-                                                        exposed,
-                                                        outcome)])
-
-calculate_bias <- function(hdpsCohort, exposed, outcome, v) {
+calculate_bias <- function(hdpsCohort, v) {
   n <- nrow(hdpsCohort)
-  e1 <- sum(hdpsCohort[[exposed]] == 1)
-  e0 <- sum(hdpsCohort[[exposed]] == 0)
-  d1 <- sum(hdpsCohort[[outcome]] == 1)
-  d0 <- sum(hdpsCohort[[outcome]] == 0)
+  e1 <- sum(hdpsCohort[[exposed]] == 1, na.rm = TRUE)
+  e0 <- sum(hdpsCohort[[exposed]] == 0, na.rm = TRUE)
+  d1 <- sum(hdpsCohort[[outcome]] == 1, na.rm = TRUE)
+  d0 <- sum(hdpsCohort[[outcome]] == 0, na.rm = TRUE)
+
+  c1 <- sum(hdpsCohort[[v]] == 1, na.rm = TRUE)
+  c0 <- n - c1 # number of people without the covariate
   
-  # Group by 'exposed' and summarize
+  # Use the full variable name (including dimension and frequency) instead of just the code
   tempFrameEx <- hdpsCohort %>%
     group_by(!!sym(exposed)) %>%
-    summarize(sum = sum(as.numeric(as.character(!!sym(
-      v)))))
+    summarize(sum = sum(as.numeric(as.character(!!sym(v))), na.rm = TRUE), .groups = 'drop')
   
-  c1 <- sum(tempFrameEx$sum[tempFrameEx[[exposed]] == 1])
-  c0 <- n - c1
-  e1c1 <- tempFrameEx$sum[tempFrameEx[[exposed]] == 1]
-  e0c1 <- tempFrameEx$sum[tempFrameEx[[exposed]] == 0]
+  e1c1 <- ifelse(1 %in% tempFrameEx[[exposed]], tempFrameEx$sum[tempFrameEx[[exposed]] == 1], NA) # number of people with the covariate and exposed
+  e0c1 <- ifelse(0 %in% tempFrameEx[[exposed]], tempFrameEx$sum[tempFrameEx[[exposed]] == 0], NA) # number of people with the covariate and not exposed
   e1c0 <- e1 - e1c1
   e0c0 <- e0 - e0c1
   
-  # Group by 'outcome' and summarize
   tempFrameOut <- hdpsCohort %>%
     group_by(!!sym(outcome)) %>%
-    summarize(sum = sum(as.numeric(as.character(!!sym(
-      v)))))
+    summarize(sum = sum(as.numeric(as.character(!!sym(v))), na.rm = TRUE), .groups = 'drop')
   
-  d1c1 <- tempFrameOut$sum[tempFrameOut[[outcome]] == 1]
-  d0c1 <- tempFrameOut$sum[tempFrameOut[[outcome]] == 0]
+  d1c1 <- ifelse(1 %in% tempFrameOut[[outcome]], tempFrameOut$sum[tempFrameOut[[outcome]] == 1], NA)
+  d0c1 <- ifelse(0 %in% tempFrameOut[[outcome]], tempFrameOut$sum[tempFrameOut[[outcome]] == 0], NA)
   d1c0 <- d1 - d1c1
   d0c0 <- d0 - d0c1
+  
+  #if any of the dc or ec cells are 0, add 0.1 to all cells
+  if (d1c1 == 0 | d1c0 == 0 | d0c1 == 0 | d0c0 == 0| e1c1 == 0 | e1c0 == 0 | e0c1 == 0 | e0c0 == 0) {
+    d1c1 <- d1c1 + 0.1
+    d1c0 <- d1c0 + 0.1
+    d0c1 <- d0c1 + 0.1
+    d0c0 <- d0c0 + 0.1
+    e1c1 <- e1c1 + 0.1
+    e1c0 <- e1c0 + 0.1
+    e0c1 <- e0c1 + 0.1
+    e0c0 <- e0c0 + 0.1
+  }
   
   pc1 <- e1c1 / e1
   pc0 <- e0c1 / e0
   
   rrCE <- pc1 / pc0
-  
-  rrCE <- if (is.na(rrCE) | rrCE == 0 | is.nan(rrCE))
-    NA
-  else
-    rrCE
-  
   rrCD <- (d1c1 / c1) / (d1c0 / c0)
-  rrCD <- if (is.na(rrCD) | rrCD == 0 | is.nan(rrCD))
-    NA
-  else
-    rrCD
   
   bias <- (pc1 * (rrCD - 1) + 1) / (pc0 * (rrCD - 1) + 1)
   absLogBias <- abs(log(bias))
   ce_strength <- abs(rrCE - 1)
   cd_strength <- abs(rrCD - 1)
   
-  data.frame(
-    code = v,
+  # Calculate log risk ratios for IV checks
+  logRRCE <- log(rrCE)
+  logRRCD <- log(rrCD)
+  
+  # Add IV flags based on the specified criteria
+  iv_flag_1 <- abs(logRRCE) > 1.5 & abs(logRRCD) < 0.5
+  iv_flag_2 <- abs(logRRCE) > 1.1 & abs(logRRCD) < 0.5
+  
+  return(list(
+    variable = v,  # Use the full variable name instead of just the code
     e1 = e1,
     e0 = e0,
     d1 = d1,
@@ -507,133 +493,78 @@ calculate_bias <- function(hdpsCohort, exposed, outcome, v) {
     bias = bias,
     absLogBias = absLogBias,
     ceStrength = ce_strength,
-    cdStrength = cd_strength
-  )
+    cdStrength = cd_strength,
+    logRRCE = logRRCE,
+    logRRCD = logRRCD,
+    iv_flag_1 = iv_flag_1,
+    iv_flag_2 = iv_flag_2
+  ))
 }
 
-run_analysis_for_outcome <- function(outcome) {
-  total_codes <- nrow(codes_dim)
+# Main workflow
+exposed <- "treatgroup"
+outcomes <- c("covid_hes_present", "covid_death_present")
+covariates <- setdiff(names(hdpsCohort), c("patid", "baseline_triple", exposed, outcomes))
+
+# Initialize a list to store results for each outcome
+results_list <- list()
+
+# Analyze for both outcomes
+for (outcome in outcomes) {
+  cat("Processing outcome:", outcome, "\n")
   
-  # Create a progress bar
+  # Create progress bar for covariates
   pb <- progress_bar$new(
-    format = "[:bar] :percent Elapsed: :elapsed ETA: :eta",
-    total = total_codes,
+    format = "[:bar] :percent Covariate: :current/:total Elapsed: :elapsed ETA: :eta",
+    total = length(covariates),
     clear = FALSE,
     width = 100
   )
   
-  # biasInfo <- lapply(seq_len(total_codes), function(i) {
-  #   v <- codes_dim$code[i]
-  #   result <- calculate_bias(hdpsCohort, exposed, outcome, v)
-  #   pb$tick()  # Update the progress bar
-  #   return(result)
-  # })
+  results <- map_dfr(covariates, function(v) {
+    bias_results <- calculate_bias(hdpsCohort, v)
+    pb$tick()  # Update progress bar
+    # Convert the list to a data frame
+    as.data.frame(bias_results, stringsAsFactors = FALSE) %>%
+      tibble::as_tibble()
+  })
   
-  # biasInfo <- do.call(rbind, biasInfo)
-  # biasInfo <- biasInfo %>% 
-  #   arrange(-absLogBias) %>% 
-  #   mutate(rank = row_number())
-  # # Return the biasInfo dataset
-  # return(biasInfo)
-  
-  # Return the biasInfo dataset
-  purrr::map_dfr(codes_dim$code, function(v) {
-    result <- calculate_bias(hdpsCohort, exposed, outcome, v)
-    pb$tick()  # Update the progress bar
-    return(result)
-  }) %>% 
-    arrange(-absLogBias) %>% 
+  results <- results %>%
+    arrange(desc(absLogBias)) %>%
     mutate(rank = row_number())
-}
-
-# Run the analysis for both outcomes
-results_outcome1 <- run_analysis_for_outcome("covid_hes_present")
-
-#save the results
-saveRDS(results_outcome1, "results_outcome1.rds")
-#read in results
-results_outcome1 <- readRDS("results_outcome1.rds")
-
-results_outcome2 <- run_analysis_for_outcome("covid_death_present")
-saveRDS(results_outcome2, "results_outcome2.rds")
-results_outcome2 <- readRDS("results_outcome2.rds")
-
-create_and_save_hdps_results <- function(results_outcome, HDPS_folder, cohort, output_ext, debugMode = FALSE, outcome) {
-
-  # Function to create top N lists
-  create_top_k <- function(k) {
-    top_k <- results_outcome %>% filter(rank <= k)
-    selectedVars <- c("patid", names(hdpsCovariates)[-1], top_k$code)
-    cohort_k <- cohort %>% 
-      dplyr::select(patid, all_of(top_k$code)) %>%
-      left_join(hdpsCovariates, by = "patid") %>%
-      dplyr::select(all_of(selectedVars))
-    list(top_k = top_k, cohort = cohort_k)
-  }
   
-  top_codes <- c(10, 100, 250, 500, 750, 1000)
-  top_codes <- c(10)
+  # Save results to HDPS folder/output
+  file_path <- file.path(HDPS_folder, "/outputs", paste0("HDPS_biasInfo_", outcome, output_ext, ".csv"))
+  write_csv(results, file_path)
   
-  # Create top lists for different N values
-  top_lists <- lapply(top_codes, create_top_k)
+  # Create and save top K lists, not including codes where the iv_flag_2 is TRUE# Create and save top K lists
+  top_codes <- c(100, 250, 500, 750, 1000)
+  top_lists <- map(top_codes, function(k) {
+    top_k <- results %>%
+      arrange(rank) %>%
+      filter(iv_flag_2 == FALSE) %>%
+      slice_head(n = k) %>%
+      dplyr::select(variable, rank)
+    
+    cohort <- hdpsCohort %>%
+      dplyr::select(c("patid", "baseline_triple", exposed, outcome, top_k$variable))
+    
+    list(cohort = cohort, top_k = top_k)
+  })
+  
   names(top_lists) <- paste0("top", top_codes)
   
-  # Save cohorts and top lists for different N values
-  for (k in top_codes) {
-    
-    file_name_cohort <- paste0(ifelse(debugMode, "debug_", ""),
-                               "covariates_HDPS_",
-                               k,
-                               outcome,
-                               output_ext,
-                               ".parquet")
-    write_parquet(top_lists[[paste0("top", k)]]$cohort,
-              file.path(HDPS_folder, "outputs", file_name_cohort))
-    
-    file_name_top <- paste0(ifelse(debugMode, "debug_", ""),
-                            "top_",
-                            k,
-                            "_HDPS_",
-                            outcome,
-                            output_ext,
-                            ".csv")
-    write_csv(top_lists[[paste0("top", k)]]$top_k,
-              file.path(HDPS_folder, "outputs", file_name_top))
-  }
+  walk2(top_lists, top_codes, function(x, y) {
+    write_parquet(x$cohort, file.path(HDPS_folder, "outputs", paste0("covariates_HDPS_", y, "_", outcome, output_ext, ".parquet")))
+    write_csv(x$top_k, file.path(HDPS_folder, "outputs", paste0("top_", y, "_HDPS_", outcome, output_ext, ".csv")))
+  })
   
-  # Save full biasInfo
-  file_name_biasInfo <- paste0(ifelse(debugMode, "debug_", ""),
-                               "HDPS_biasInfo_",
-                               outcome,
-                               output_ext,
-                               ".csv")
-  write_csv(results_outcome,
-            file.path(HDPS_folder, "outputs", file_name_biasInfo))
-  
-  # Return results directly
-  results_outcome
-  
-  hdpsCohort
+  # Store results for this outcome
+  results_list[[outcome]] <- list(results = results, top_lists = top_lists)
 }
 
-
-# For the first outcome
-df_outcome1 <- create_and_save_hdps_results(
-  results_outcome = results_outcome1, 
-  HDPS_folder = HDPS_folder, 
-  cohort = hdpsCohort,
-  debugMode = debugMode,
-  output_ext = output_ext,
-  outcome = "covid_hes_present"
-)
-
-# For the second outcome
-df_outcome2 <- create_and_save_hdps_results(
-  results_outcome = results_outcome2, 
-  HDPS_folder = HDPS_folder, 
-  cohort = hdpsCohort,
-  debugMode = debugMode,
-  output_ext = output_ext,
-  outcome = "covid_death_present"
-)
-
+# Access and save results for all outcomes
+for (outcome in outcomes) {
+  results_outcome <- results_list[[outcome]]$results
+  write_csv(results_outcome, paste0("results_", outcome, output_ext, ".csv"))
+}

@@ -7,7 +7,7 @@
 # Process: trim icd-10 code to 3 characters. Count number of codes per patient, so that the result is a df with variables patid, code, and counts of that individual code per patient. From that, calculate median, p75 and max number of codes per patient for each icd10. If median is equal to 1, set to NA, if 75 is equal to median, set to p75 to NA. From that, create a df with 1 row per patient and up to 3 columns per icd10 code. The columns are numbered A00_1, A00_2 and A00_3. They are binary, indicating whether the patient has ever had the code, whether they have had the code more than the median number of times, and whether they have had the code more than the 75th percentile number of times. If the median or p75 are set to NA, the corresponding columns should be skipped. 
 #############################
 
-packages <- c("tidyverse", "MetBrewer", "arrow", "readstata13", "data.table", "progress", "future", "future.apply", "progressr", "furrr", "parallel")
+packages <- c("tidyverse", "arrow")
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
   install.packages(packages[!installed_packages])
@@ -17,7 +17,6 @@ invisible(lapply(packages, function(pkg) {
   suppressMessages(library(pkg, character.only = TRUE, verbose = FALSE))
 }))
 
-palette <- met.brewer("Cassatt2")
 
 #unzip files
 setwd(Copd_aurum_extract)
@@ -29,12 +28,12 @@ hes <- setDT(hes)
 
 #remove spno, epikey and epiend from hes
 hes <- hes %>% 
-  select(-spno, -epikey, -epiend)
+  dplyr::select(-spno, -epikey, -epiend)
 
 #create new variable denoting icd, trimmed to 3 characters
 hes <- hes %>% 
   mutate(icd_trim = substr(icd, 1, 3)) %>%
-  select(-icd, -icdx, -d_order)
+  dplyr::select(-icd, -icdx, -d_order)
 
 #rename icd_trim to code
 setnames(hes, "icd_trim", "code")

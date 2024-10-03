@@ -1,16 +1,12 @@
 ###########################################################
-# R script:    chapters_prevalence.R
+# R script:    001_extraCodesVisualization.R
 #
-# Author:      Marleen Bokern
+# Author:      [Your Name] (modified from John Tazare's script)
 #
-# Date:        Sep 2024
+# Date:        [Current Date]
 #
-# Description: Plot for summarising high-level concepts in
-#              the Top N ranked HDPS covariates separated
-#              by data dimension.
-#
-# Inspired and adapted from:
-# https://www.data-to-viz.com/graph/circularbarplot.html
+# Description: Plot for visualizing extra codes included in each
+#              iteration of the HDPS model.
 ###########################################################
 
 # Load and install required packages
@@ -23,42 +19,43 @@ invisible(lapply(packages, function(pkg) {
   suppressMessages(library(pkg, character.only = TRUE, verbose = FALSE))
 }))
 
-exclude_triple = F
 
-if (exclude_triple == TRUE) {
-  cohort_ext <- "_no_triple"
-} else {
-  cohort_ext <- ""
-}
-
-# Set working directory (you need to define HDPS_folder)
-# HDPS_folder <- "/path/to/your/HDPS/folder"
-# setwd(HDPS_folder)
-
-# Set color palette
-palette <- met.brewer("Cassatt2")
+# Set topVars as a vector
 topVars <- c("100", "250", "500", "750", "1000")
 
-
 outcomes <- c("covid_hes_present", "covid_death_present")
-cohort_exts <- c("", "_no_triple")
+output_exts <- c("", "_no_triple")
 
- for (cohort_ext in cohort_exts) {
-   for (outcome in outcomes) {
-     for (k in topVars) {
-#browser()
-       print(paste0("Processing ", k, " ", outcome, " ", cohort_ext))
-      # Load data from outputs folder
-      data <- read.csv(paste0(
+for (output_ext in output_exts) {
+  for (outcome in outcomes) {
+    for (i in 2:length(topVars)) {
+
+      prev_k <- topVars[i-1]
+      current_k <- topVars[i]
+      
+      print(paste0("Processing ", prev_k, " to ", current_k, " ", outcome, " ", output_ext))
+      
+      # Load data from outputs folder for both previous and current iterations
+      prev_data <- read.csv(paste0(
         HDPS_folder,
         "/outputs/top_",
-        k,
+        prev_k,
         "_HDPS_",
         outcome,
-        cohort_ext,
+        output_ext,
         ".csv"
       ))
-   
+      
+      current_data <- read.csv(paste0(
+        HDPS_folder,
+        "/outputs/top_",
+        current_k,
+        "_HDPS_",
+        outcome,
+        output_ext,
+        ".csv"
+      ))
+      
       # Function to assign chapters to ICD and BNF codes
       assign_chapter <- function(variable) {
         # For ICD codes
@@ -75,7 +72,7 @@ cohort_exts <- c("", "_no_triple")
           if (substr(variable, 1, 1) == "H" &&
               as.numeric(substr(variable, 2, 3)) >= 60)
             return("H95")  # Diseases of the ear and mastoid process
-          return(substr(variable, 1, 1))  # For other ICD variables, return the first character
+          return(substr(variable, 1, 1))  # For other ICD codes, return the first character
         }
         
         # For BNF codes
@@ -87,12 +84,19 @@ cohort_exts <- c("", "_no_triple")
         return(substr(variable, 1, 1))
       }
       
-      # Process data
-      data$dim <- as.factor(as.numeric(substr(data$variable, 2, 2)))
-      data$chapter <- sapply(substr(data$variable, 4, nchar(data$variable)), assign_chapter)
+      
+      # Filter current_data to only include new codes
+      new_codes <- current_data %>%
+        filter(!(variable %in% prev_data$variable)) %>%
+        arrange(rank) %>%
+        head(as.numeric(current_k) - as.numeric(prev_k))
+      
+      # Process new_codes data
+      new_codes$dim <- as.factor(as.numeric(substr(new_codes$variable, 2, 2)))
+      new_codes$chapter <- sapply(substr(new_codes$variable, 4, nchar(new_codes$variable)), assign_chapter)
       
       # Create summary dataset
-      summary_df <- data %>%
+      summary_df <- new_codes %>%
         group_by(dim, chapter) %>%
         summarise(tot = n(), .groups = 'drop')
       
@@ -102,7 +106,7 @@ cohort_exts <- c("", "_no_triple")
           arrange(desc(tot)) %>%
           slice(1:30)
       }
-
+      
       # Add chapter indicators and descriptions
       chapter_ind <- c(
         "A" = 1,
@@ -227,7 +231,7 @@ cohort_exts <- c("", "_no_triple")
       
       # Add id column for plotting
       summary_df$id <- seq(1, nrow(summary_df))
-  
+      
       # Get the name, angles and position of dimension chapter
       number_of_bar <- nrow(summary_df)
       angle <- 90 - 360 * (summary_df$id - 0.5) / number_of_bar
@@ -237,16 +241,16 @@ cohort_exts <- c("", "_no_triple")
       
       max_prev <- max(summary_df$prev, na.rm = TRUE)
       summary_df <- summary_df %>%
-#        group_by(dim) %>%
+        #        group_by(dim) %>%
         mutate(normalized_prev = tot / sum(tot) * 100) #%>%
-#        ungroup()
+      #        ungroup()
       
       # Set a fixed maximum radius for the plot
       fixed_max_radius <- 8
       
       # Scale the normalized prevalence to fit within the fixed radius
       summary_df <- summary_df %>%
-      mutate(scaled_prev = (normalized_prev*0.5) / max((normalized_prev), na.rm = TRUE) * fixed_max_radius)
+        mutate(scaled_prev = (normalized_prev*0.5) / max((normalized_prev), na.rm = TRUE) * fixed_max_radius)
       
       # Calculate label positions
       label_data <- summary_df %>%
@@ -280,8 +284,11 @@ cohort_exts <- c("", "_no_triple")
       
       # Define the colour palette outside the ggplot call
       colours <- c("1" = palette[1], "2" = palette[3], "3" = palette[5])
+      # Modify the plotting code to reflect the changes in data
+      # Update the title to show the current comparison
+      plot_title <- paste("Extra Codes from", prev_k, "to", current_k, "Variables")
       
-      # Create the plot
+      # Update the ggplot code (example, adjust as needed)
       p <- ggplot(summary_df, aes(x = as.factor(id), y = scaled_prev, fill = dim)) +
         scale_fill_manual(values = colours,
                           labels = c("1" = "Clinical", "2" = "Prescriptions", "3" = "Hospital"),
@@ -320,17 +327,15 @@ cohort_exts <- c("", "_no_triple")
         )
       
       print(p)
-
-      # Save
+      
+      # Update the file naming convention
       file_path <- file.path(
         HDPS_folder,
         "outputs",
         "diagnostics",
-        paste0("conceptsPlot_top", k, outcome, cohort_ext, ".png")
+        paste0("extraCodesPlot_", prev_k, "to", current_k, "_", outcome, output_ext, ".png")
       )
       ggsave(file_path, p, width = 16, height = 16)
-      
     }
   }
-  
 }
