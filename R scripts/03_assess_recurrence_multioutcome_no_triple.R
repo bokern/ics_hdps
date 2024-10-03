@@ -68,7 +68,7 @@ if (exclude_triple == TRUE) {
 
 # Clinical
 dimension <- "observations"
-clinicalDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+clinicalDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
@@ -80,7 +80,7 @@ if (debugMode == TRUE) {
     filter(patid %in% sample(unique_patids, sample_size))
 }
 
-clinicalEvs <- read_parquet(paste0(dimension, "_for_HDPS_ever_mapped.parquet")) %>%
+clinicalEvs <- read_parquet(paste0(dimension, "_for_hdps_ever_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
@@ -94,7 +94,7 @@ if (debugMode == TRUE) {
 
 # Therapy
 dimension <- "drugs"
-therapyDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+therapyDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
@@ -108,7 +108,7 @@ if (debugMode == TRUE) {
 
 # Hospital
 dimension <- "HES"
-hospDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
+hospDim <- read_parquet(paste0(dimension, "_for_hdps_mapped.parquet")) %>%
   mutate_at(c("patid"), as.character) %>%
   mutate(n = 1) %>%
   filter(patid %in% pat_summary_data$patid)
@@ -230,7 +230,7 @@ for (x in dimNum) {
     ungroup() %>%
     mutate(prev = n / denom) %>%
     mutate(prev = if_else(prev > 0.5, 1 - prev, prev)) %>%
-    mutate(rank = dense_rank(-prev)) %>%
+    mutate(rank = dense_rank(-prev)) %>% #dense_rank assigns consecutive ranks (i.e., if there are multiple rows with equal prev, )
     arrange(rank) %>%
     mutate(dim = x) %>%
     # restrict to top 500 in each dimension
@@ -416,14 +416,15 @@ calculate_bias <- function(hdpsCohort, v) {
   e0 <- sum(hdpsCohort[[exposed]] == 0, na.rm = TRUE)
   d1 <- sum(hdpsCohort[[outcome]] == 1, na.rm = TRUE)
   d0 <- sum(hdpsCohort[[outcome]] == 0, na.rm = TRUE)
+
+  c1 <- sum(hdpsCohort[[v]] == 1, na.rm = TRUE)
+  c0 <- n - c1 # number of people without the covariate
   
   # Use the full variable name (including dimension and frequency) instead of just the code
   tempFrameEx <- hdpsCohort %>%
     group_by(!!sym(exposed)) %>%
     summarize(sum = sum(as.numeric(as.character(!!sym(v))), na.rm = TRUE), .groups = 'drop')
   
-  c1 <- sum(tempFrameEx$sum[tempFrameEx[[exposed]] == 1], na.rm = TRUE) # number of people with the covariate
-  c0 <- n - c1 # number of people without the covariate
   e1c1 <- ifelse(1 %in% tempFrameEx[[exposed]], tempFrameEx$sum[tempFrameEx[[exposed]] == 1], NA) # number of people with the covariate and exposed
   e0c1 <- ifelse(0 %in% tempFrameEx[[exposed]], tempFrameEx$sum[tempFrameEx[[exposed]] == 0], NA) # number of people with the covariate and not exposed
   e1c0 <- e1 - e1c1
@@ -454,10 +455,7 @@ calculate_bias <- function(hdpsCohort, v) {
   pc0 <- e0c1 / e0
   
   rrCE <- pc1 / pc0
-  rrCE <- if (is.na(rrCE) | rrCE == 0 | is.nan(rrCE)) NA else rrCE
-  
   rrCD <- (d1c1 / c1) / (d1c0 / c0)
-  rrCD <- if (is.na(rrCD) | rrCD == 0 | is.nan(rrCD)) NA else rrCD
   
   bias <- (pc1 * (rrCD - 1) + 1) / (pc0 * (rrCD - 1) + 1)
   absLogBias <- abs(log(bias))
@@ -539,14 +537,13 @@ for (outcome in outcomes) {
   file_path <- file.path(HDPS_folder, "/outputs", paste0("HDPS_biasInfo_", outcome, output_ext, ".csv"))
   write_csv(results, file_path)
   
-  #read in biasInfo
-  #results <- read_csv(file_path)
-  
-  # Create and save top K lists
+  # Create and save top K lists, not including codes where the iv_flag_2 is TRUE# Create and save top K lists
   top_codes <- c(100, 250, 500, 750, 1000)
   top_lists <- map(top_codes, function(k) {
     top_k <- results %>%
-      filter(rank <= k) %>%
+      arrange(rank) %>%
+      filter(iv_flag_2 == FALSE) %>%
+      slice_head(n = k) %>%
       dplyr::select(variable, rank)
     
     cohort <- hdpsCohort %>%
