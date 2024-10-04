@@ -226,7 +226,7 @@ for (outcome in outcomes) {
       smd_data,
       paste0(
         HDPS_folder,
-        "/outputs/SMDs_predefined_covariates",
+        "/outputs/SMDs_predefined_covariates_",
         outcome, 
         "_",
         cohort_ext,
