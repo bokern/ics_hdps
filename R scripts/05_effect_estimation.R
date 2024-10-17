@@ -3,11 +3,7 @@
 # PROJECT:      xzx26005
 # AUTHOR:        Marleen Bokern
 # DATE CREATED:  Aug 2024
-# NOTES:        high-dimensional Propensity Score Analysis for ACNU:
-#                                  1. Summarise baseline covariates
-#                                  2. Estimate propensity score
-#                                  3. Propensity score matching and evaluation
-#                                  4. Estimate the treatment effect
+# NOTES:        high-dimensional Propensity Score Analysis, estimating treatment effects for unweighted, HDPS-weighted, and predefined-covariate-weighted analyses
 
 # -----------------------------------------------------------------------------
 # Flag to enable debugging; if TRUE, script will only be run on 1,000 patients
@@ -51,10 +47,8 @@ topVars <- c("100", "250", "500", "750", "1000")
 outcomes <- c("covid_hes_present", "covid_death_present")
 cohort_exts <- c("", "_no_triple")
 
-for (cohort_ext in cohort_exts) {
-  # Iterate through each outcome
-  for (outcome in outcomes) {
-    
+for (cohort_ext in cohort_exts) { # Iterate through each cohort
+  for (outcome in outcomes) {   # Iterate through each outcome
     
     print(paste("Analyzing outcome:", outcome))
     
@@ -70,11 +64,14 @@ for (cohort_ext in cohort_exts) {
     
     follow_up_times <- pat_summary_data %>% dplyr::select("patid", timeinstudy)
     
-    
     if (cohort_ext == "_no_triple") {
       pat_summary_data <- pat_summary_data %>%
         filter(baseline_triple == 0)
     }
+    
+    #exclude if imd is "Missing"
+    pat_summary_data <- pat_summary_data %>%
+      filter(imd != "Missing")
     
     exclude_vars <- c(
       "pracid",
@@ -133,7 +130,6 @@ for (cohort_ext in cohort_exts) {
     )
     
     # Unweighted analysis and analysis using predefined variables -------------
-    
     PredefinedVars <- pat_summary_data %>% dplyr::select(-all_of(exclude_vars))
     
     file_path_predefined <- file.path(
@@ -158,11 +154,9 @@ for (cohort_ext in cohort_exts) {
     
     hdpsPredefinedVars$treatgroup <- relevel(hdpsPredefinedVars$treatgroup, ref = "0")
     
-    #run unweighted and analysis weighted using predefined variables
-    
     # Estimate Treatment Effect (unweighted)
     surv_obj <- Surv(time = hdpsPredefinedVars[[timeinstudy]], event = hdpsPredefinedVars[[outcome]])
-    # Unweighted Analysis
+    # Unweighted Cox regression
     PredefinedUnweighted <- coxph(surv_obj ~ treatgroup, data = hdpsPredefinedVars)
     
     #plot schoenfeld residuals
@@ -250,7 +244,6 @@ for (cohort_ext in cohort_exts) {
       height = 30,  # Adjust height for all components
       units = "cm"
     )
-    
     
     # Unweighted Logistic Regression
     logistic_unweighted <- glm(as.formula(paste(outcome, "~ treatgroup")),
@@ -418,44 +411,62 @@ for (cohort_ext in cohort_exts) {
       xlab = "Fitted values",
       ylab = "Residuals",
       pch = 16,
-      # Use solid circles for points
       cex = 0.5  # Reduce point size for better visibility
     )
     abline(h = 0, lty = 2)
     
     dev.off()
     
+    #get number of events
+    num_events <- hdpsPredefinedVars %>%
+      filter(!!sym(outcome) == 1) %>%
+      nrow()
+    #get number of weighted events
+    num_weighted_events <- hdpsPredefinedVars %>%
+      filter(!!sym(outcome) == 1) %>%
+      summarise(weighted_events = sum(iptw_weight_predefined)) %>%
+      pull()
+    
     all_results <- data.frame(
       Covariates = character(),
       Results = character(),
-      stringsAsFactors = FALSE)
+      OutcomeEvents = numeric(),
+      stringsAsFactors = FALSE
+    )
     
     logistic_results <- data.frame(
       Covariates = character(),
       Results = character(),
+      OutcomeEvents = numeric(),
       stringsAsFactors = FALSE)
     
     # Add the initial "Unweighted" and "Predefined" results as before
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Unweighted",
-                           Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE)))
+                           Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE),
+                           OutcomeEvents = num_events))
+
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Predefined",
-                           Results = ShowRegTable(hdps_weighted_predefined, printToggle = FALSE)))
+                           Results = ShowRegTable(hdps_weighted_predefined, printToggle = FALSE),
+                           OutcomeEvents = num_weighted_events))
     
     logistic_results <- rbind(logistic_results,
                               data.frame(
                                 Covariates = "Unweighted",
-                                Results = ShowRegTable(logistic_unweighted, printToggle = FALSE)))
+                                Results = ShowRegTable(logistic_unweighted, printToggle = FALSE),
+                                OutcomeEvents = num_events))
+
     logistic_results <- rbind(logistic_results,
                               data.frame(
                                 Covariates = "Predefined",
-                                Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE)))
+                                Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE),
+                                OutcomeEvents = num_weighted_events))
     
     for (k in topVars) {
-      # k <- "250"
+      
       print(paste("Analyzing top", k, "variables"))
       
       # Read in parquet file
@@ -570,8 +581,7 @@ for (cohort_ext in cohort_exts) {
         width = 30,
         height = 30,
         units = "cm")
-      
-      
+    
       #plot schoenfeld residuals
       schoenfeld_residuals <- cox.zph(hdpsWeighted)
       
@@ -599,11 +609,18 @@ for (cohort_ext in cohort_exts) {
       plot(schoenfeld_residuals)
       dev.off()
       
-      # Add results to the all_results dataframe (Cox model)
+      #get weighted event count
+      event_count <- hdpsData %>%
+        filter(!!sym(outcome) == 1) %>%
+        summarise(n = sum(iptw_weight)) %>%
+        pull(n)
+      
+      # Add results to the all_results dataframe
       all_results <- rbind(all_results,
                            data.frame(
                              Covariates = as.character(k),
-                             Results = ShowRegTable(hdpsWeighted, printToggle = FALSE)
+                             Results = ShowRegTable(hdpsWeighted, printToggle = FALSE),
+                             OutcomeEvents = event_count
                            ))
       
       # Weighted Logistic Regression (HDPS)
@@ -647,19 +664,19 @@ for (cohort_ext in cohort_exts) {
       abline(h = 0, lty = 2)
       
       dev.off()
-      
+
       # Add results to the logistic_results dataframe
       logistic_results <- rbind(
         logistic_results,
         data.frame(
           Covariates = as.character(k),
-          Results = ShowRegTable(logistic_weighted, printToggle = FALSE)
+          Results = ShowRegTable(logistic_weighted, printToggle = FALSE),
+          OutcomeEvents = event_count
         )
       )
-      
+
       # remove rows with the rowname Intercept from the logistic regression results
       logistic_results <- logistic_results[!grepl("Intercept", rownames(logistic_results)), ]
-      
     }
     
     # Clean up
@@ -718,7 +735,6 @@ for (cohort_ext in cohort_exts) {
         ".csv"
       )
     )
-    
   }
 }
 
