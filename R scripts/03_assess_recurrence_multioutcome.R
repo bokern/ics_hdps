@@ -66,6 +66,10 @@ if (exclude_triple == TRUE) {
     filter(baseline_triple == 0)
 }
 
+#exclude if imd is "Missing"
+pat_summary_data <- pat_summary_data %>%
+  filter(imd != "Missing")
+
 # Clinical
 dimension <- "observations"
 clinicalDim <- read_parquet(paste0(dimension, "_for_HDPS_mapped.parquet")) %>%
@@ -232,9 +236,7 @@ for (x in dimNum) {
     mutate(prev = if_else(prev > 0.5, 1 - prev, prev)) %>%
     mutate(rank = dense_rank(-prev)) %>%
     arrange(rank) %>%
-    mutate(dim = x) %>%
-    # restrict to top 500 in each dimension
-    filter(rank <= 500)
+    mutate(dim = x) 
   
   assign(nam, prev)
   
