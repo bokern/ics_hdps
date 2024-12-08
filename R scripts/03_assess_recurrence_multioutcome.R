@@ -181,7 +181,7 @@ exclude_vars <- c(
   "smokstatus")
 
 # Remove the specified variables from the dataframe
-hdpsCovariates <- pat_summary_data %>% dplyr::select(-all_of(exclude_vars))
+hdpsCovariates <- pat_summary_data %>% dplyr::select(-any_of(exclude_vars))
 
 # Save hdpsCovariates to a Parquet file in the HDPS_folder/outputs directory
 write_parquet(hdpsCovariates, 
