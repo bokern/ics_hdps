@@ -67,6 +67,29 @@ missing <- code_map %>%
   filter(is.na(bnf_paragraph)) %>%
   arrange(desc(DrugIssues)) %>%
   dplyr::select(ProdCodeId, dmdid, BNFChapter, Term.from.EMIS, DrugIssues)
+#make drugissues numeric
+code_map$DrugIssues <- as.numeric(code_map$DrugIssues)
+#sort on bnf_paragraph and DrugIssues
+code_map <- code_map %>%
+  arrange(bnf_paragraph, desc(DrugIssues))
+#count if bnf_paragraph = NA
+nrow(code_map[is.na(code_map$bnf_paragraph), ])
+nrow(code_map[is.na(code_map$bnf_paragraph) & (code_map$DrugIssues >= 500000), ])
+
+#subset of code_map with bnf_paragraph = NA
+na_code_map <- code_map[is.na(code_map$bnf_paragraph), ]
+
+ggplot(na_code_map, aes(x = DrugIssues)) +
+  geom_histogram(bins = 150, fill = palette[1], color = "black") +
+  labs(
+    title = "Histogram of DrugIssues for unmapped codes",
+    x = "DrugIssues",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  scale_y_log10() +
+  #make x axis labels readable
+  scale_x_continuous(labels = scales::comma)
 
 # Map specific terms to BNF paragraphs when bnf_paragraph is empty
 code_map$bnf_paragraph <- case_when(
