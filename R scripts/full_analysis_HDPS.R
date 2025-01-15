@@ -35,9 +35,14 @@ source("04_cov_weighting_parallel.R")
 Sys.time()
 setwd(HDPS_github)
 source("05_effect_estimation.R")
+
 Sys.time()
 setwd(HDPS_github)
 source("combined_forest.R")
+Sys.time()
+setwd(HDPS_github)
+source("combined_forest_by_outcome.R")
+
 
 setwd(paste0(HDPS_github, "/hdps-diagnostics"))
 source("chapters_prevalence.R")
