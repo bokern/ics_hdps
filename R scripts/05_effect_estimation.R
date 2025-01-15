@@ -56,6 +56,12 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
                           "covid_hes_present" = "timeinstudy2",
                           "covid_death_present" = "timeinstudy3")
     
+    outcome_label <- switch(
+      outcome,
+      covid_hes_present = "COVID-19 Hospitalisation",
+      covid_death_present = "COVID-19 Death"
+    )
+    
     # Load in patient summary
     pat_summary_data <- read_parquet("copd_wave1_60d.parquet") %>%
       mutate_at(c("patid"), as.character) %>%
@@ -130,7 +136,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
     )
     
     # Unweighted analysis and analysis using predefined variables -------------
-    PredefinedVars <- pat_summary_data %>% dplyr::select(-all_of(exclude_vars))
+    PredefinedVars <- pat_summary_data %>% dplyr::select(-any_of(exclude_vars))
     
     file_path_predefined <- file.path(
       HDPS_folder,
@@ -266,7 +272,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
     plot(
       jitter(fitted_values, factor = 0.3),
       jitter(residuals, factor = 10),
-      main = paste("Log residuals for", outcome, "(unweighted)"),
+      main = paste("Log residuals for", outcome_label, "(unweighted)"),
       cex.main = 0.9,
       xlab = "Fitted values",
       ylab = "Residuals",
@@ -404,8 +410,8 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       jitter(residuals, factor = 10),
       main = paste(
         "Log residuals for",
-        outcome,
-        "(weighted using predefined covariates)"
+        outcome_label,
+        "(weighted using prespecified covariates)"
       ),
       cex.main = 0.9,
       xlab = "Fitted values",
@@ -449,7 +455,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
 
     all_results <- rbind(all_results,
                          data.frame(
-                           Covariates = "Predefined",
+                           Covariates = "Prespecified covariates",
                            Results = ShowRegTable(hdps_weighted_predefined, printToggle = FALSE),
                            OutcomeEvents = num_weighted_events))
     
@@ -461,7 +467,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
 
     logistic_results <- rbind(logistic_results,
                               data.frame(
-                                Covariates = "Predefined",
+                                Covariates = "Prespecified covariates",
                                 Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE),
                                 OutcomeEvents = num_weighted_events))
     
@@ -649,7 +655,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
         jitter(residuals, factor = 10),
         main = paste(
           "Log residuals for",
-          outcome,
+          outcome_label,
           "(weighted using",
           k,
           "covariates)"

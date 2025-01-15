@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
 # PROGRAM NAME:  04_cov_weighting_parallel
-# PROJECT:      
+# PROJECT:
 # AUTHOR:        John Tazare, Marleen Bokern
 # DATE CREATED:   10 Sep 2020
 # NOTES:        high-dimensional Propensity Score Analysis
@@ -56,6 +56,7 @@ select <- dplyr::select
 topVars <- c("100", "250", "500", "750", "1000")
 outcomes <- c("covid_hes_present", "covid_death_present")
 cohort_exts <- c("", "_no_triple")
+
 
 cov_weighting <- function(params) {
   cohort_ext <- params$cohort_ext
@@ -136,7 +137,7 @@ cov_weighting <- function(params) {
     "smokstatus"
   )
   
-  hdpsPredefinedVars <- pat_summary_data %>% dplyr::select(-all_of(exclude_vars))
+  hdpsPredefinedVars <- pat_summary_data %>% dplyr::select(-any_of(exclude_vars))
   
   # Remove treatgroup from the dataframe
   hdpsCovariates <- hdpsPredefinedVars %>% dplyr::select(-treatgroup)
@@ -187,7 +188,8 @@ cov_weighting <- function(params) {
   
   #put people outside of common support in a separate dataframe
   hdpsOutOfSupport_predefined <- hdpsPredefinedVars %>%
-    filter(pscore_predefined < ps_trim$min | pscore_predefined > ps_trim$max)
+    filter(pscore_predefined < ps_trim$min |
+             pscore_predefined > ps_trim$max)
   
   #save total number of people outside of common support, number of people outside of common support in each treatment group and their weights
   hdpsOutOfSupportSummary_predefined <- hdpsOutOfSupport_predefined %>%
@@ -218,7 +220,14 @@ cov_weighting <- function(params) {
   #convert trimming_results to a dataframe and export as csv
   write.csv(
     hdpsOutOfSupportSummary_predefined,
-    file = paste0(HDPS_folder, "/outputs/HDPS_", outcome,"_predefined", cohort_ext, "_trimming_results.csv"),
+    file = paste0(
+      HDPS_folder,
+      "/outputs/HDPS_",
+      outcome,
+      "_predefined",
+      cohort_ext,
+      "_trimming_results.csv"
+    ),
   )
   
   #count  people outside of common support
@@ -298,28 +307,77 @@ cov_weighting <- function(params) {
     iptw_plot_predefined <- hdpsPredefinedVars %>%
       mutate(trtlabel = ifelse(treatgroup == 1, 'ICS', 'LABA/LAMA')) %>%
       ggplot(aes(x = pscore_predefined, color = trtlabel)) +
-      geom_density(alpha = 0.5, linewidth = 1) +
-      labs(x = 'Probability of receiving ICS (Predefined)', y = 'Density', title = 'Overlap plot with IPTW (Predefined)') +
+      geom_density(alpha = 1, linewidth = 1) +
+      labs(x = "Propensity score", y = 'Density', title = "Propensity score (predefined covariates") +
       scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
-      scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+      scale_x_continuous(breaks = seq(0, 1, 0.2)) +
       theme_minimal() +
       theme(legend.title = element_blank()) +
       guides(color = guide_legend(override.aes = list(fill = c(
         palette[9], palette[4]
       ))))
     
+    # Save both PNG and RDS
+    ggsave(
+      paste0(
+        HDPS_folder,
+        "/outputs/Predefined_overlapUnweighted_",
+        outcome,
+        cohort_ext,
+        ".png"
+      ),
+      iptw_plot_predefined,
+      height = 2,
+      width = 3
+    )
+    
+    saveRDS(
+      iptw_plot_predefined  + theme_minimal(base_size = 12),
+      file = paste0(
+        HDPS_folder,
+        "/outputs/Predefined_overlapUnweighted_",
+        outcome,
+        cohort_ext,
+        ".rds"
+      )
+    )
+    
+    # Plot overlap with IPTW for predefined covariates
+    iptw_plot_predefined <- hdpsPredefinedVars %>%
+      mutate(trtlabel = ifelse(treatgroup == 1, 'ICS', 'LABA/LAMA')) %>%
+      ggplot(aes(x = pscore_predefined, color = trtlabel, weight = iptw_weight_predefined)) +
+      geom_density(alpha = 1, linewidth = 1) +
+      labs(x = "Propensity score", y = 'Density', title = "Weighted propensity score (predefined covariates)") +
+      scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
+      scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+      theme_minimal() +
+      theme(legend.title = element_blank()) +
+      guides(color = guide_legend(override.aes = list(fill = c(palette[9], palette[4]))))
+    
+    # Save both PNG and RDS
     ggsave(
       paste0(
         HDPS_folder,
         "/outputs/Predefined_overlapWeighted_",
         outcome,
         cohort_ext,
-        "_trimmed.png"),
+        "_trimmed.png"
+      ),
       iptw_plot_predefined,
-      height = 4,
-      width = 6
+      height = 2,
+      width = 3
     )
     
+    saveRDS(
+      iptw_plot_predefined  + theme_minimal(base_size = 12),
+      file = paste0(
+        HDPS_folder,
+        "/outputs/Predefined_overlapWeighted_",
+        outcome,
+        cohort_ext,
+        "_trimmed.rds"
+      )
+    )
   }
   # HDPS WEIGHTING ----------------------------------------------------------
   
@@ -343,7 +401,9 @@ cov_weighting <- function(params) {
   
   # Combine predefined and HDPS covariates if hdpsData exists
   all_covariates <- hdpsData %>%
-    dplyr::select(-any_of(c("iptw_weight", "pscore", "baseline_triple"))) %>%  # Remove HDPS-specific columns if they exist
+    dplyr::select(-any_of(c(
+      "iptw_weight", "pscore", "baseline_triple"
+    ))) %>%  # Remove HDPS-specific columns if they exist
     left_join(
       hdpsPredefinedVars %>% dplyr::select(patid, pscore_predefined, iptw_weight_predefined),
       by = "patid"
@@ -418,15 +478,6 @@ cov_weighting <- function(params) {
   
   hdpsData$pscore <- predict(psModel, type = "response")
   
-  # histogram of propensity scores by treatment group
-  hdpsData %>%
-    ggplot(aes(x = pscore, fill = factor(treatgroup))) +
-    geom_density(alpha = 0.5) +
-    labs(x = "Propensity score", y = "Density", title = "Propensity score distribution by treatment group") +
-    scale_fill_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
-    theme_minimal() +
-    theme(legend.title = element_blank())
-  
   #save min and max propensity scores in each treatment group, save limits of area of common support
   ps_trim <- hdpsData %>%
     dplyr::select(treatgroup, pscore) %>%
@@ -435,15 +486,13 @@ cov_weighting <- function(params) {
     ungroup() %>%
     summarise(min = max(min), max = min(max))
   
-  
   # Use weightit to calculate stabilized ATE weights
   ate_stabilized <- weightit(
     formula = psModelFunction,
     data = hdpsData,
     method = "glm",
     estimand = "ATE",
-    stabilize = TRUE
-  )
+    stabilize = TRUE)
   
   # Add the stabilized weights to the dataset
   hdpsData$iptw_weight <- ate_stabilized$weights
@@ -486,20 +535,28 @@ cov_weighting <- function(params) {
   #convert trimming_results to a dataframe and export as csv
   write.csv(
     hdpsOutOfSupportSummary_hdps,
-    file = paste0(HDPS_folder, "/outputs/HDPS_", outcome, k, cohort_ext, "_trimming_results.csv"),
+    file = paste0(
+      HDPS_folder,
+      "/outputs/HDPS_",
+      outcome,
+      "_",
+      k,
+      cohort_ext,
+      "_trimming_results.csv"
+    ),
   )
   
   #exclude people outside of common support
   hdpsData <- hdpsData %>%
     filter(pscore >= ps_trim$min & pscore <= ps_trim$max)
   
-  #plot the propensity scores
-  plot <- ggplot(hdpsData, aes(x = pscore, color = factor(treatgroup))) +
+  # Original propensity score distribution plot (unweighted)
+  plot_ps_dist <- ggplot(hdpsData, aes(x = pscore, color = factor(treatgroup))) +
     geom_density(linewidth = 1) +
     labs(
       x = "Propensity Score",
       y = "Density",
-      title = "Propensity score distribution (unweighted)",
+      title = paste0("Propensity score (unweighted, ", k, " covariates)"),
       color = NULL
     ) +
     scale_x_continuous(limits = c(0, 1)) +
@@ -512,6 +569,7 @@ cov_weighting <- function(params) {
       palette[4], palette[9]
     ))))
   
+  # Save both PNG and RDS
   ggsave(
     paste0(
       HDPS_folder,
@@ -522,10 +580,23 @@ cov_weighting <- function(params) {
       cohort_ext,
       ".png"
     ),
-    height = 4,
-    width = 6
+    plot_ps_dist,
+    height = 3,
+    width = 4.5
   )
   
+  saveRDS(
+    plot_ps_dist + theme_minimal(base_size = 12),
+    file = paste0(
+      HDPS_folder,
+      "/outputs/covariates_HDPS_",
+      k,
+      "_overlapUnweighted_",
+      outcome,
+      cohort_ext,
+      ".rds"
+    )
+  )
   # IPTW Propensity Score Weighting  ----------------------------------------------
   
   #percentage of poeple in treatment group 1
@@ -536,34 +607,63 @@ cov_weighting <- function(params) {
   
   # Save the percentages
   total_count <- sum(counts$count)
-  p_LABA_LAMA <- counts$count[counts$treatgroup == "0"] / total_count 
-  p_ICS <- counts$count[counts$treatgroup == "1"] / total_count 
+  p_LABA_LAMA <- counts$count[counts$treatgroup == "0"] / total_count
+  p_ICS <- counts$count[counts$treatgroup == "1"] / total_count
   
   hdpsData <- hdpsData %>%
-    mutate(iptw_weight = case_when(treatgroup == 1 ~ p_ICS / pscore, treatgroup == 0 ~ p_LABA_LAMA / (1 - pscore)))
+    mutate(iptw_weight = case_when(
+      treatgroup == 1 ~ p_ICS / pscore,
+      treatgroup == 0 ~ p_LABA_LAMA / (1 - pscore)
+    ))
   
-  # plot the weights by treatment group
-  plot <- hdpsData %>%
+  # Weight distribution plot
+  plot_weight_dist <- hdpsData %>%
     mutate(trtlabel = ifelse(treatgroup == 1, 'ICS', 'LABA/LAMA')) %>%
-    ggplot(aes(x = iptw_weight, color = trtlabel)) +  # Change color mapping to trtlabel
-    geom_density(alpha = 0.5, linewidth = 1) +
+    ggplot(aes(x = iptw_weight, color = trtlabel)) +
+    geom_density(alpha = 1, linewidth = 1) +
     scale_x_continuous(breaks = seq(0, 10, 1)) +
     xlim(0, 5) +
-    labs(x = 'Inverse probability of treatment weight', y = 'Density', title = 'Weight distribution by treatment group') +
-    scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +  # Correctly referencing palaette colors
+    labs(x = 'Inverse probability of treatment weight', y = 'Density', title = 'Inverse probability of treatment weights') +
+    scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
     theme_minimal() +
-    theme(legend.title = element_blank()) +
+    theme(
+      legend.title = element_blank(),
+      plot.title = element_text(size = 12),
+      axis.title = element_text(size = 10),
+      legend.text = element_text(size = 10)
+    ) +
     guides(color = guide_legend(override.aes = list(fill = c(
       palette[9], palette[4]
     ))))
   
-  file_path <- file.path(
-    HDPS_folder,
-    "outputs",
-    paste0("HDPS_weight_dist_", k, outcome, cohort_ext, "_trimmed.png")
+  # Save both PNG and RDS
+  ggsave(
+    paste0(
+      HDPS_folder,
+      "/outputs/HDPS_weight_dist_",
+      k,
+      "_",
+      outcome,
+      cohort_ext,
+      "_trimmed.png"
+    ),
+    plot_weight_dist,
+    width = 6,
+    height = 3
   )
   
-  ggsave(file_path, plot, width = 8, height = 4)
+  saveRDS(
+    plot_weight_dist + theme_minimal(base_size = 12),
+    file = paste0(
+      HDPS_folder,
+      "/outputs/HDPS_weight_dist_",
+      k,
+      "_",
+      outcome,
+      cohort_ext,
+      "_trimmed.rds"
+    )
+  )
   
   # Create a survey design object
   svy_design <- svydesign(ids = ~ 1,
@@ -602,18 +702,31 @@ cov_weighting <- function(params) {
   # Plot Overlap with IPTW
   iptw_plot <- hdpsData %>%
     mutate(trtlabel = ifelse(treatgroup == 1, 'ICS', 'LABA/LAMA')) %>%
-    ggplot(aes(x = pscore, color = trtlabel)) + # Switched to color aesthetic
-    geom_density(alpha = 0.5, linewidth = 1) +
-    labs(x = 'Probability of receiving ICS', # Updated labels
-         y = 'Density', title = 'Overlap plot with IPTW') +
-    scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) + # Custom color scheme
-    scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+    ggplot(aes(
+      x = pscore,
+      color = trtlabel,
+      weight = iptw_weight
+    )) +
+    geom_density(linewidth = 1, alpha = 1) +
+    labs(
+      x = "Propensity score", 
+      y = "Density", 
+      title = paste0("Propensity score (weighted, ", k, " covariates)")
+    ) +
+    scale_color_manual(values = c("ICS" = palette[9], "LABA/LAMA" = palette[4])) +
+    scale_x_continuous(breaks = seq(0, 1, 0.2)) +
     theme_minimal() +
-    theme(legend.title = element_blank()) + # Remove legend title
+    theme(
+      legend.title = element_blank(),
+      plot.title = element_text(size = 12),
+      axis.title = element_text(size = 10),
+      legend.text = element_text(size = 10)
+    ) +
     guides(color = guide_legend(override.aes = list(fill = c(
       palette[9], palette[4]
     ))))
   
+  # Save both PNG and RDS
   ggsave(
     paste0(
       HDPS_folder,
@@ -624,10 +737,23 @@ cov_weighting <- function(params) {
       cohort_ext,
       "_trimmed.png"
     ),
-    height = 4,
-    width = 6
+    iptw_plot,
+    height = 3,
+    width = 4.5
   )
   
+  saveRDS(
+    iptw_plot + theme_minimal(base_size = 12),
+    file = paste0(
+      HDPS_folder,
+      "/outputs/covariates_HDPS_",
+      k,
+      "_overlapWeighted_",
+      outcome,
+      cohort_ext,
+      "_trimmed.rds"
+    )
+  )
   #merge in iptw_weight_predefined from hdpsPredefinedVars
   hdpsData <- hdpsData %>%
     left_join(hdpsPredefinedVars %>%
@@ -700,7 +826,7 @@ cov_weighting <- function(params) {
         rename(smd_weighted_predefined = SMD),
       by = c("Variable")
     ) %>%
-    mutate_at(vars(contains("smd")), ~ ifelse(. == "<0.001", 0.0001, .)) %>%
+    mutate_at(vars(contains("smd")), ~ ifelse(. == "<0.001", "0.0001", .)) %>%
     mutate(
       analysis = paste0(k, "_", outcome),
       smd_unweighted = as.numeric(smd_unweighted),
@@ -724,70 +850,6 @@ cov_weighting <- function(params) {
       outcome,
       cohort_ext,
       "_trimmed.csv"
-    )
-  )
-  
-  # Original code for overall SMD calculation and output
-  extract_smd <- function(tableone_obj, label) {
-    smd_data <- as.data.frame(print(tableone_obj, smd = TRUE, printToggle = FALSE))
-    smd_data$Variable <- rownames(smd_data)
-    smd_data$Iteration <- label
-    smd_data <- smd_data %>%
-      dplyr::select(Iteration, Variable, SMD)
-    return(smd_data)
-  }
-  
-  smd_combined <- extract_smd(tabUnweighted, paste0("Unweighted_", k, "_", outcome)) %>%
-    rename(smd_unweighted = SMD) %>%
-    left_join(extract_smd(tabWeighted, paste0("Weighted_", k, "_", outcome)) %>%
-                rename(smd_weighted = SMD),
-              by = c("Variable")) %>%
-    left_join(
-      extract_smd(
-        tabWeighted_predefined,
-        paste0("Predefined_Weighted_", k, "_", outcome)
-      ) %>%
-        rename(smd_weighted_predefined = SMD),
-      by = c("Variable")
-    ) %>%
-    mutate_at(vars(contains("smd")), ~ ifelse(. == "<0.001", 0.0001, .)) %>%
-    mutate(
-      analysis = paste0(k, "_", outcome),
-      smd_unweighted = as.numeric(smd_unweighted),
-      smd_weighted = as.numeric(smd_weighted),
-      smd_weighted_predefined = as.numeric(smd_weighted_predefined)
-    ) %>%
-    dplyr::select(analysis,
-                  Variable,
-                  smd_unweighted,
-                  smd_weighted,
-                  smd_weighted_predefined)
-  
-  # Save overall SMDs to a CSV file
-  write_csv(
-    smd_combined,
-    paste0(
-      HDPS_folder,
-      "/outputs/HDPS_",
-      k,
-      "_SMD_",
-      outcome,
-      cohort_ext,
-      "_trimmed.csv"
-    )
-  )
-  
-  # Save the HDPS data to a parquet file
-  write_parquet(
-    hdpsData,
-    paste0(
-      HDPS_folder,
-      "/outputs/HDPS_",
-      k,
-      "_",
-      outcome,
-      cohort_ext,
-      "_trimmed.parquet"
     )
   )
   
@@ -825,23 +887,17 @@ results <- future_pmap(params, ~ cov_weighting(tibble(
   topVar = ..3
 )), .options = furrr_options(seed = TRUE))
 
-
-# import all trimming_restuls.csv files from hdps_foler/outputs and append them into one dataframe
+# import all trimming_results.csv files from hdps_foler/outputs and append them into one dataframe
 trimming_results <- list.files(
   path = paste0(HDPS_folder, "/outputs"),
   pattern = "trimming_results.csv",
-  full.names = TRUE)
+  full.names = TRUE
+)
 
-trimming_results_full <- lapply(
-  trimming_results,
-  function(x) {
-    read_csv(x)
-  }
-) %>%
+trimming_results_full <- lapply(trimming_results, function(x) {
+  read_csv(x)
+}) %>%
   #bind rows with the first row as column names
   bind_rows() %>%
   #export to csv
-  write_csv(
-    paste0(HDPS_folder, "/outputs/trimming_results_full.csv")
-  )
-
+  write_csv(paste0(HDPS_folder, "/outputs/trimming_results_full.csv"))
