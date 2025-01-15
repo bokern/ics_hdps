@@ -1,3 +1,16 @@
+###########################################################
+# R script:    combined_plots.R
+#
+# Author:     Marleen Bokern
+#
+# Date:        Oct 2024
+#
+# Description: Create panel plot
+#
+# Inspired and adapted from:
+# https://www.data-to-viz.com/graph/circularbarplot.html
+###########################################################
+
 packages <- c("tidyverse", "arrow", "MetBrewer", "ggplot2", "ggpubr")
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -9,13 +22,10 @@ invisible(lapply(packages, function(pkg) {
 
 palette <- met.brewer("Cassatt2")
 
-topVars <- c("100", "250", "500", "750")
+#nb: may need to run different iterations of the code separately
+topVars <- c("100", "250", "500", "750", "1000")
 outcomes <- c("covid_hes_present", "covid_death_present")
 cohort_exts <- c("", "_no_triple")
-
-k <- "1000"
-outcome <- "covid_death_present"
-cohort_ext <- ""
 
 for (outcome in outcomes){
   print(paste0("Processing ", outcome))

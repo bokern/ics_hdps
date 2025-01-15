@@ -30,10 +30,11 @@ palette <- met.brewer("Cassatt2")
 topVars <- c("100", "250", "500", "750", "1000")
 outcomes <- c("covid_hes_present", "covid_death_present")
 cohort_exts <- c("", "_no_triple")
-
+ 
 for (cohort_ext in cohort_exts) {
-  for (outcome in outcomes) {
-    for (k in topVars) {
+   for (outcome in outcomes) {
+     for (k in topVars) {
+
 
       print(paste0("Processing HDPS_", k, "_SMD_", outcome, cohort_ext ))
       data_path <- file.path(HDPS_folder, paste0("/outputs/HDPS_", k, "_SMD_", outcome, cohort_ext, "_trimmed.csv"))
@@ -58,7 +59,7 @@ for (cohort_ext in cohort_exts) {
         ungroup()
       
       #if smd_unweighted and smd_weighted are na remove the row
-      data <- data %>% filter(!is.na(smd_unweighted) & !is.na(smd_weighted))
+   #   data <- data %>% filter(!is.na(smd_unweighted) & !is.na(smd_weighted))
       
       # Get the number of predefined and HDPS covariates
       n_predefined <- sum(data$covariate_type == "Predefined")
@@ -103,7 +104,10 @@ for (cohort_ext in cohort_exts) {
           covariate_type == "HDPS" ~ row_number() - n_predefined  # Adjust HDPS starting point
         ))
       
-      # # Update custom breaks and labels
+      #remove variables where smd_unweighted is NA and covariate_type is Predefined
+      data <- data %>% filter(!is.na(smd_unweighted) | covariate_type == "HDPS")
+      
+      # Update custom breaks and labels
       # min_value <- min(data$adjusted_rank)  # This should be -24
       # max_value <- max(data$adjusted_rank)  # This should be 100
       # 
@@ -117,11 +121,13 @@ for (cohort_ext in cohort_exts) {
       
       calculate_icon_size <- function(k) {
         if (k <= 100) {
-          return(2.5)
+          return(2)
         } else if (k <= 500) {
-          return(1.8)
+          return(1.7)
+        } else if (k <= 750) {
+          return(1.3)
         } else if (k <= 1000) {
-          return(1)
+          return(0.8)
         } else {
           return(0.5)
         }
@@ -131,17 +137,28 @@ for (cohort_ext in cohort_exts) {
       
       # Create the main plot without x-axis labels for HDPS covariates
       p <- ggplot(data) +
+        # Always plot unweighted SMD
         geom_point(aes(x = adjusted_rank, y = smd_unweighted, color = "Unweighted"), 
-                   shape = 16, alpha = 1, size = icon_size) +
-        geom_point(aes(x = adjusted_rank, y = smd_weighted, color = "HDPS-Weighted"), 
-                   shape = 18, alpha = 1, size = icon_size) +
-        geom_point(aes(x = adjusted_rank, y = smd_weighted_predefined, color = "Predefined Covariates"), 
-                   shape = 17, alpha = 1, size = icon_size) +
+                   shape = 16, alpha = 0.8, size = icon_size) +
+        # Only plot weighted SMD where not NA
+        geom_point(data = . %>% filter(!is.na(smd_weighted)),
+                   aes(x = adjusted_rank, y = smd_weighted, color = "HDPS-Weighted"), 
+                   shape = 18, alpha = 0.8, size = icon_size) +
+        geom_point(data = . %>% filter(!is.na(smd_weighted_predefined)),
+                   aes(x = adjusted_rank, y = smd_weighted_predefined, color = "Predefined Covariates"), 
+                   shape = 17, alpha = 0.8, size = icon_size) +
         scale_x_continuous(
+          limits = c(min(data$adjusted_rank), as.numeric(k)),
           expand = c(0.02, 0.02)
         ) +
-        scale_y_reverse(limits = c(max(c(data$smd_unweighted, data$smd_weighted), na.rm = TRUE) * 1.1, 0), 
-                        breaks = seq(0, 1, by = 0.1)) +
+        scale_y_reverse(
+          # Include all unweighted SMDs in the limit calculation
+          limits = c(max(c(data$smd_unweighted,
+                           data$smd_weighted[!is.na(data$smd_weighted)],
+                           data$smd_weighted_predefined[!is.na(data$smd_weighted_predefined)]), 
+                         na.rm = TRUE) * 1.1, 0), 
+          breaks = seq(0, 1, by = 0.1)
+        ) +
         labs(
           x = "Covariates",
           y = "Absolute standardised mean difference",
@@ -149,37 +166,82 @@ for (cohort_ext in cohort_exts) {
         ) +
         geom_hline(yintercept = c(0, 0.1), linetype = "dashed", color = "black", size = 0.5) +
         geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
-        annotate("text", x = min(data$adjusted_rank)/2, y = max(c(data$smd_unweighted, data$smd_weighted), na.rm = TRUE) * 1.15, 
-                 label = "Predefined Covariates", size = 3.5) +
-        annotate("text", x = max(data$adjusted_rank)/2, y = max(c(data$smd_unweighted, data$smd_weighted), na.rm = TRUE) * 1.15, 
-                 label = "HDPS covariates", size = 3.5) +
+        annotate("text", 
+                 x = min(data$adjusted_rank)/2, 
+                 y = max(c(data$smd_unweighted,
+                           data$smd_weighted[!is.na(data$smd_weighted)],
+                           data$smd_weighted_predefined[!is.na(data$smd_weighted_predefined)]), 
+                         na.rm = TRUE) * 1.15, 
+                 label = "Predefined Covariates", 
+                 size = 3.5) +
+        annotate("text", 
+                 x = max(data$adjusted_rank)/2, 
+                 y = max(c(data$smd_unweighted,
+                           data$smd_weighted[!is.na(data$smd_weighted)],
+                           data$smd_weighted_predefined[!is.na(data$smd_weighted_predefined)]), 
+                         na.rm = TRUE) * 1.15, 
+                 label = "HDPS covariates", 
+                 size = 3.5) +
         theme_minimal() +
         theme(
           legend.position = c(0.85, 0.2),
           legend.background = element_rect(fill = "white", color = NA),
-          legend.title = element_text(size = 10),
-          legend.text = element_text(size = 8),
-          axis.ticks.x = element_blank(), # Remove x-axis ticks
-          panel.grid.minor = element_blank()
+          legend.title = element_text(size = 12),
+          legend.text = element_text(size = 10),
+          axis.ticks.x = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.x = element_text(size = 14),
+          axis.text.y = element_text(size = 14),
+          axis.title = element_text(size = 15)
         ) +
-        scale_color_manual(values = c("Unweighted" = palette[4], "HDPS-Weighted" = palette[7], "Predefined Covariates" = palette[9])) +
-        guides(color = guide_legend(override.aes = list(size = 3)))
+        scale_color_manual(values = c(
+          "Unweighted" = palette[4], 
+          "HDPS-Weighted" = palette[7], 
+          "Predefined Covariates" = palette[9]
+        )) +
+        guides(color = guide_legend(override.aes = list(size = 3)))      
       
-      # Print the plot
-      print(p)
       
-      # Save
-      file_path <- file.path(
-        HDPS_folder,
-        "outputs",
-        "diagnostics",
-        paste0("SMD_", k, outcome, cohort_ext, ".png")
+      # Create plot object with all necessary components
+      # plot_object <- list(
+      #   plot = p,
+      #   data = data,
+      #   parameters = list(
+      #     k = k,
+      #     outcome = outcome,
+      #     cohort_ext = cohort_ext,
+      #     icon_size = icon_size,
+      #     palette = palette,
+      #     n_predefined = n_predefined,
+      #     n_hdps = n_hdps
+      #   )
+      # )
+      
+      # Save plot object as RDS
+      saveRDS(
+        p,
+        file = file.path(
+          HDPS_folder,
+          "outputs",
+          "diagnostics",
+          paste0("SMD_", k, outcome, cohort_ext, ".rds")
+        )
       )
       
-      ggsave(file_path, p, width = 10, height = 8)
+      # Save PNG as before
+      ggsave(
+        file.path(
+          HDPS_folder,
+          "outputs",
+          "diagnostics",
+          paste0("SMD_", k, outcome, cohort_ext, ".png")
+        ), 
+        p, 
+        width = 8, 
+        height = 5
+      )
       
+      gc()
     }
   }
 }
-
-
