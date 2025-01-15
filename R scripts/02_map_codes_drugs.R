@@ -59,8 +59,7 @@ code_map$bnf_paragraph <- case_when(
       pad = "0"
     ),!is.na(code_map$BNFChapter) &
     nchar(code_map$BNFChapter) == 8 ~ substr(code_map$BNFChapter, 1, 6),
-  TRUE ~ NA_character_
-)
+  TRUE ~ NA_character_)
 
 #pick out codes with bnf_paragraph = NA and sort on DrugIssues
 missing <- code_map %>%
@@ -225,8 +224,7 @@ all_codes <- c(
   lama_single_codes,
   laba_lama_codes,
   ics_laba_codes,
-  triple_therapy_codes
-)
+  triple_therapy_codes)
 
 setwd(Copd_aurum_extract)
 # List of drug files to process
