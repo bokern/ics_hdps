@@ -3,11 +3,11 @@
 # Programmer name: Marleen Bokern
 # Date Started:  05/24
 #############################  
-# 
+#  extracts all data for COPD cohort in lookback period (12 months before index date)
 #############################
 
 
-packages <- c("tidyverse", "MetBrewer", "arrow", "readstata13", "bench")
+packages <- c("tidyverse", "arrow", "readstata13")
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
   install.packages(packages[!installed_packages])
@@ -17,10 +17,9 @@ invisible(lapply(packages, function(pkg) {
   suppressMessages(library(pkg, character.only = TRUE, verbose = FALSE))
 }))
 
-palette <- met.brewer("Cassatt2")
-
 setwd(Datadir_copd)
 
+#set number of observation and drug issue files
 n_obs_files <- 48
 n_drug_files <- 49
   
