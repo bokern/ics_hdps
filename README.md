@@ -42,3 +42,20 @@ The analysis pipeline consists of the main scripts:
 - Analyzes both predefined and high-dimensional covariates
 - Utilizes parallel processing to improve performance
 - Generates diagnostic plots and tables for assessing balance
+
+5. Treatment effect estimation (05_effect_estimation.R)
+
+- estimates treatment effects for COPD patients using different weighting methods: 
+  - Unweighted analysis
+  - Analysis using prespecified covariates
+  - Analysis using high-dimensional propensity score (HDPS) with various covariate counts (100, 250, 500, 750, 1000)
+- Input Data: cohort data from parquet files for COPD patients in Wave 1 (60 days)
+- Analysis Methods: Cox Proportional Hazards Models for time-to-event analysis, Logistic Regression Models for binary outcome analysis, Kaplan-Meier Curves with risk tables and cumulative events
+- Diagnostics: Schoenfeld residuals for Cox models, Residual plots for logistic regression models, Propensity score balance assessment
+- Outputs: Detailed results tables for Cox and logistic regression models, Kaplan-Meier curve visualizations with risk tables, Diagnostic plots for model assessment, Summarized results in CSV format
+Usage:
+  - Set the working directory and debugging flag as needed. The script will loop through:
+  - Different outcomes (COVID-19 hospitalization, COVID-19 death)
+  - Different cohorts (all patients, non-triple therapy patients)
+  - Different HDPS variable selection thresholds (100-1000 variables)
+
