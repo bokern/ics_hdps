@@ -59,12 +59,12 @@ Usage:
 
 
 
-HDPS Diagnostic Visualizations
+## HDPS Diagnostic Visualizations 
 
-This folder contains R scripts for generating diagnostic visualizations for high-dimensional propensity score (HDPS) analyses. These scripts help assess the quality and performance of HDPS models by creating informative plots and tables.
-Overview
+This folder contains R scripts for generating diagnostic plots for HDPS analyses. These scripts help assess the quality and performance of HDPS models .
+**Overview**
 The code in this repository generates various diagnostic plots for evaluating propensity score models, with a focus on comparing conventional predefined covariates with high-dimensional automated approaches. The visualizations help assess balance, prevalence, and treatment effects across different covariate sets.
-Key Visualizations
+**Key Visualizations**
 1. Covariate Concepts Plot (chapters_prevalence.R)
 Visualizes the prevalence of high-level clinical concepts within the top N ranked HDPS covariates:
 - Creates circular bar plots showing the distribution of clinical codes across different data dimensions (Clinical, Prescriptions, Hospital)
