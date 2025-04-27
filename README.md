@@ -36,15 +36,13 @@ The analysis pipeline consists of the main scripts:
 - Creates datasets with different numbers of top-ranked covariates (100, 250, 500, 750, 1000)
 - Implements instrumental variable checks to exclude potential instruments
 
-4.parallelized propensity score weighting (04_cov_weighting_parallel.R)
-
+4. Parallelised propensity score weighting (04_cov_weighting_parallel.R)
 - Calculates and applies inverse probability of treatment weights (IPTW)
 - Analyzes both predefined and high-dimensional covariates
 - Utilizes parallel processing to improve performance
 - Generates diagnostic plots and tables for assessing balance
 
 5. Treatment effect estimation (05_effect_estimation.R)
-
 - estimates treatment effects for COPD patients using different weighting methods: 
   - Unweighted analysis
   - Analysis using prespecified covariates
@@ -62,6 +60,7 @@ Usage:
 
 
 HDPS Diagnostic Visualizations
+
 This folder contains R scripts for generating diagnostic visualizations for high-dimensional propensity score (HDPS) analyses. These scripts help assess the quality and performance of HDPS models by creating informative plots and tables.
 Overview
 The code in this repository generates various diagnostic plots for evaluating propensity score models, with a focus on comparing conventional predefined covariates with high-dimensional automated approaches. The visualizations help assess balance, prevalence, and treatment effects across different covariate sets.
