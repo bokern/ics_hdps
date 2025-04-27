@@ -59,3 +59,58 @@ Usage:
   - Different cohorts (all patients, non-triple therapy patients)
   - Different HDPS variable selection thresholds (100-1000 variables)
 
+
+
+HDPS Diagnostic Visualizations
+This folder contains R scripts for generating diagnostic visualizations for high-dimensional propensity score (HDPS) analyses. These scripts help assess the quality and performance of HDPS models by creating informative plots and tables.
+Overview
+The code in this repository generates various diagnostic plots for evaluating propensity score models, with a focus on comparing conventional predefined covariates with high-dimensional automated approaches. The visualizations help assess balance, prevalence, and treatment effects across different covariate sets.
+Key Visualizations
+1. Covariate Concepts Plot (chapters_prevalence.R)
+Visualizes the prevalence of high-level clinical concepts within the top N ranked HDPS covariates:
+- Creates circular bar plots showing the distribution of clinical codes across different data dimensions (Clinical, Prescriptions, Hospital)
+- Groups codes by clinical chapters (e.g., respiratory system, cardiovascular system)
+- Provides a visual understanding of which clinical domains are being captured by the HDPS algorithm
+
+2. Standardized Mean Differences Plot (stdDiffsPredefinedPlusHDPS.R)
+- Generates plots comparing standardized mean differences (SMDs) before and after weighting:
+- Shows covariate balance between treatment groups
+- Compares unweighted vs. weighted balance using different approaches
+- Highlights the relative impact of predefined covariates vs. HDPS covariates
+- Demonstrates how adding HDPS covariates improves balance across groups
+
+3. Combined PS Overlap Plot (combined_plot_for_paper.R)
+- Creates publication-ready plots that combine:
+  - Propensity score distributions for treatment groups
+  - Compares overlap between unweighted and weighted scenarios
+  - Arranges multiple plots in a grid for easy comparison
+  - Customizes visualization settings for publication quality
+
+4. Treatment Effect by Covariate Count (plot_or_covariates_one_by_one.R)
+  - Generates plots showing how treatment effect estimates change with increasing numbers of covariates (1-250 HDPS-covariates):
+  - Plots hazard/odds ratios against number of covariates included (both hazard and odds ratios)
+  - Shows confidence intervals as lines and ribbons
+  - Helps identify when effect estimates stabilize with additional covariates
+
+5. SMD Tables for Predefined Covariates (table_SMDs_predefined_predefined_covariates.R)
+  - Creates detailed tables showing standardized mean differences:
+  - Compares balance across predefined covariates only
+  - Shows unweighted and weighted balance metrics
+  - Allows comparison of balance achieved with different HDPS covariate sets
+  - Outputs results to CSV files for further analysis
+
+Usage
+The scripts are designed to work with propensity score analysis outputs from HDPS models. Common configuration parameters include:
+
+k: Number of covariates (e.g., 100, 250, 500, 750, 1000)
+outcome: Outcome variable (e.g., "covid_hes_present", "covid_death_present")
+cohort_ext: Cohort extension (e.g., "", "_no_triple")
+
+Output
+The visualizations are saved as:
+- PNG files for direct viewing
+- RDS files for further modification and analysis
+- CSV files for tabular data
+
+- All outputs are stored in an "outputs/diagnostics" directory structure.
+
