@@ -106,8 +106,8 @@ k: Number of covariates (e.g., 100, 250, 500, 750, 1000)\
 outcome: Outcome variable (e.g., "covid_hes_present", "covid_death_present")\
 cohort_ext: Cohort extension (e.g., "", "_no_triple")\
 
-Output
-The visualizations are saved as:
+**Output**\
+The visualizations are saved as:\
 - PNG files for direct viewing
 - RDS files for further modification and analysis
 - CSV files for tabular data
