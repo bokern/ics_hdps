@@ -101,11 +101,10 @@ Visualizes the prevalence of high-level clinical concepts within the top N ranke
   - Outputs results to CSV files for further analysis
 
 **Usage**
-The scripts are designed to work with propensity score analysis outputs from HDPS models. Common configuration parameters include:
-
-k: Number of covariates (e.g., 100, 250, 500, 750, 1000)
-outcome: Outcome variable (e.g., "covid_hes_present", "covid_death_present")
-cohort_ext: Cohort extension (e.g., "", "_no_triple")
+The scripts are designed to work with propensity score analysis outputs from HDPS models. Common configuration parameters include:\
+k: Number of covariates (e.g., 100, 250, 500, 750, 1000)\
+outcome: Outcome variable (e.g., "covid_hes_present", "covid_death_present")\
+cohort_ext: Cohort extension (e.g., "", "_no_triple")\
 
 Output
 The visualizations are saved as:
