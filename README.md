@@ -61,7 +61,7 @@ Usage:
 
 ## HDPS Diagnostic Visualizations 
 
-This folder contains R scripts for generating diagnostic plots for HDPS analyses. These scripts help assess the quality and performance of HDPS models.
+Teh subfolder hdps-diagnostics contains R scripts for generating diagnostic plots for HDPS analyses. These scripts help assess the quality and performance of HDPS models.
 
 **Overview**
 The code in this repository generates various diagnostic plots for evaluating propensity score models, with a focus on comparing conventional predefined covariates with high-dimensional automated approaches. The visualizations help assess balance, prevalence, and treatment effects across different covariate sets.
