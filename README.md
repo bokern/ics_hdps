@@ -42,6 +42,9 @@ The analysis pipeline consists of the main scripts:
 - Utilizes parallel processing to improve performance
 - Generates diagnostic plots and tables for assessing balance
 
+  4a. Parallelised propensity score weighting, adding top 250 covariates one-by-one (04_cov_weighting_parallel_check.R)
+  - adds the top 250 covariates for COVID-19 hospitalisation excluding triple therapy users one-by one to assess senstivity of the results to individual covariates
+
 5. Treatment effect estimation (05_effect_estimation.R)
 - estimates treatment effects for COPD patients using different weighting methods: 
   - Unweighted analysis
@@ -56,6 +59,38 @@ Usage:
   - Different outcomes (COVID-19 hospitalization, COVID-19 death)
   - Different cohorts (all patients, non-triple therapy patients)
   - Different HDPS variable selection thresholds (100-1000 variables)
+
+    5a. Treatment effect estimation for top 250 covariates one-by-one (05_effect_estimation_check.R)
+    - estimates treatment effects (HR and ORs) adding the top 250 covariates for COVID-19 hospitalisation excluding triple therapy users one-by one to assess senstivity of the results to individual covariates
+
+### Visualization Scripts
+
+1. **Combined forest plots** showing effect estimates with and without triple therapy side-by-side
+2. **Separate forest plots** for Cox and logistic regression models with logarithmic scales
+
+- **`combined_forest_by_outcome.R`**: Creates forest plots comparing results with and without triple therapy for different outcomes (COVID hospitalization and death). Uses the `ggplot2` and `patchwork` packages to create side-by-side visualizations of effect estimates.
+
+- **`forest_plots_logged.R`**: An alternative implementation for creating forest plots using the `forestplot` package. Creates separate plots for Cox and logistic regression models with logarithmic scales.
+
+- **`full_analysis_HDPS.R`**: Master script that orchestrates the entire analysis pipeline. It imports data, maps codes, assesses recurrence, performs covariate weighting, estimates effects, and generates visualizations.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -100,6 +135,10 @@ Visualizes the prevalence of high-level clinical concepts within the top N ranke
   - Allows comparison of balance achieved with different HDPS covariate sets
   - Outputs results to CSV files for further analysis
 
+6. Plot of ORs and CIs adding HDPS covariates one-by-one (plot_or_covariates_one_by_one.R)
+  - generates line graph of OR and CI with covariate rank on the x axis.
+
+    
 **Usage**
 The scripts are designed to work with propensity score analysis outputs from HDPS models. Common configuration parameters include:\
 k: Number of covariates (e.g., 100, 250, 500, 750, 1000)\
