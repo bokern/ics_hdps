@@ -4,7 +4,36 @@
 # Date Started:  06/24
 #############################
 # Map prodcodes to BNF paragraphs
-#############################
+
+# Date Started:  06/24
+#######################################
+# Map prodcodes to BNF paragraphs for CPRD drug issue files
+# Description:
+#
+# This script prepares CPRD Aurum drug issue data for high-dimensional propensity score (HDPS)
+# analysis by mapping product codes (ProdCodeId) to BNF paragraph codes. This enables 
+# standardization and aggregation of drug exposure variables.
+#
+# The process involves:
+# 1. Loading the CPRD Aurum product code browser and BNF-to-DMD mapping files.
+# 2. Merging these datasets to map each `ProdCodeId` to a BNF paragraph code.
+# 3. Creating a standardized `bnf_paragraph` variable based on mapped BNF codes or BNFChapter values from CPRD
+# 4. Identifying unmapped products and prioritizing them by prescription volume (`DrugIssues`).
+# 5. Applying rule-based mappings for common unmapped drugs based on drug names.
+# 6. Remove medications used to define the exposures (inhaled medications)
+# 7. Exporting:
+#    - A clean mapping of `ProdCodeId` to `bnf_paragraph`.
+#    - A list of the top unmatched codes by prescription frequency for further review.
+#
+# Input files:
+# - CPRD product code browser: `CPRDAurumProduct.txt`
+# - BNF-to-DMD mapping file: `bnf_to_dmd.csv`
+#
+# Output files:
+# - Clean mapping: `code_map_exp`
+# - Top 100 unmatched codes: `drugs_counts_unmatched.csv`
+#############################################
+
 packages <- c(
   "tidyverse",
   "MetBrewer",
@@ -48,7 +77,7 @@ bnf_snomed <- read.csv(file_path, header = TRUE, colClasses = "character") %>% d
 code_map <- code_browser %>%
   left_join(bnf_snomed, by = c("dmdid" = "id"))
 
-#create bnf_paragraph
+#create bnf_paragraph by taking the first 6 characters of bnf_code or BNFChapter
 code_map$bnf_paragraph <- case_when(
   !is.na(code_map$bnf_code) &
     nchar(code_map$bnf_code) >= 6 ~ substr(code_map$bnf_code, 1, 6),!is.na(code_map$BNFChapter) &

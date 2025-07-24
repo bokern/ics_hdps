@@ -1,11 +1,38 @@
 # -----------------------------------------------------------------------------
-# PROGRAM NAME:  501_HDPS_ACNU_Proc
-# PROJECT:      xzx26005
+# PROGRAM NAME:  03_assess_recurrence_multioutcome.R
 # AUTHOR:        John Tazare, adapted by Marleen Bokern
 # DATE CREATED:   03 Sept 2020
-# NOTES:       Performs hd-PS procedure for the ACNU
+
+# DESCRIPTION:
+# This script prepares input data for the HDPS procedure applied to the COPD cohort. 
+# It performs the following tasks:
+#   - Reads in and filters patient-level summary data and health record data from
+#     primary care observation, drugissue, and hospital dimensions.
+#   - Applies a debug mode option to reduce runtime during testing by subsampling.
+#   - Excludes patients based on specific criteria (e.g. missing IMD, triple therapy).
+#   - Identifies eligible covariates by excluding predefined variables.
+#   - Computes code prevalence and recurrence within each dimension.
+#   - Assigns prevalence-based ranks and filters infrequent codes.
+#   - Aggregates and saves results including:
+#     - Patient-level covariates
+#     - Prevalent/recurrent codes per dimension
 #
-# REQUIRES:
+# INPUTS:
+#   - Patient summary file:              copd_wave1_60d.parquet
+#   - Mapped observation data:           observations_for_HDPS_mapped.parquet
+#   - Mapped therapy data:               drugs_for_HDPS_mapped.parquet
+#   - Mapped hospital data:              HES_for_HDPS_mapped.parquet
+#   - Ever-use indicators for observations: observations_for_HDPS_ever_mapped.parquet
+#
+# OUTPUTS:
+#   - covariates_no_hdps*.parquet: dataset without hdps covariates
+#   - codeTots*.parquet (counts individual codes by patid and code, one row per patid and code)
+#   - codeDists (code recurrence summaries)
+#   - cohort_hdps_covariates*.parquet: full dataset of one row per patient with all HDPS covariates
+#   - covariates_HDPS**.parquet: dataset with HDPS covariates
+#   - top_k_hdps**.csv: top k codes for each dimension
+#   - results_**.csv": summary of results
+
 # -----------------------------------------------------------------------------
 
 packages <- c(

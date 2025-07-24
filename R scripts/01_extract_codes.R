@@ -3,7 +3,13 @@
 # Programmer name: Marleen Bokern
 # Date Started:  05/24
 #############################  
-#  extracts all data for COPD cohort in lookback period (12 months before index date)
+# This script extracts and processes data for the COPD cohort during the 
+# 12-month lookback period before 01 March 2020, including:
+# - Reading observation and prescription files for patients in the COPD cohort,
+#   filtering by relevant date ranges, and saving the results as Parquet files
+# - Reading HES inpatient diagnosis data within the same lookback window
+# - saves intermediate outputs for use in 
+#   high-dimensional propensity score (HDPS) analysis
 #############################
 
 

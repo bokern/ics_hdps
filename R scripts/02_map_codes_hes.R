@@ -2,9 +2,13 @@
 # Project: HDPS
 # Programmer name: Marleen Bokern
 # Date Started:  06/24
-#############################  
-# Look at HES codes from year before index
-# Process: trim icd-10 code to 3 characters. Count number of codes per patient, so that the result is a df with variables patid, code, and counts of that individual code per patient. From that, calculate median, p75 and max number of codes per patient for each icd10. If median is equal to 1, set to NA, if 75 is equal to median, set to p75 to NA. From that, create a df with 1 row per patient and up to 3 columns per icd10 code. The columns are numbered A00_1, A00_2 and A00_3. They are binary, indicating whether the patient has ever had the code, whether they have had the code more than the median number of times, and whether they have had the code more than the 75th percentile number of times. If the median or p75 are set to NA, the corresponding columns should be skipped. 
+#############################
+# Description:
+# This script processes Hospital Episode Statistics (HES) data for HDPS feature generation.
+# Steps:
+# 1. Imports the HES data from a parquet file.
+# 2. Trims the ICD-10 code to the first 3 characters.
+# 3. Saves the cleaned HES data to a new parquet file for use in downstream analysis.
 #############################
 
 packages <- c("tidyverse", "arrow")

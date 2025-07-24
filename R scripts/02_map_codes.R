@@ -4,7 +4,37 @@
 # Date Started:  06/24
 #######################################
 # Map SNOMED TO ICD-10 for observation files
+# Description:
+# This script prepares primary care observation data for HDPS analysis by mapping SNOMED CT codes to ICD-10 codes. 
+# The steps include:
+#
+# 1. imports patient ID lists.
+# 2. Reads SNOMED-to-ICD10 mapping files and CPRD Aurum code browser.
+# 3. Merging the CPRD browser with the SNOMED-to-ICD10 map.
+# 4. Importing and processing CPRD observational data stored as Parquet files:
+#    - Filtering to events before 01-Mar-2020 and after 01-Mar-2019 (lookback window)
+#    - Keeping only observations with valid `medcodeid`s and matching patient IDs
+#    - Mapping `medcodeid` to ICD-10 via SNOMED using the merged lookup
+#    - Removing COVID-19-specific codes (U07) as this denotes the outcome
+#    - Separately saving matched and unmatched observations 
+#
+# 5. Creating an "ever-mapped" dataset to capture each patient's unique set of ICD-10 codes.
+# 6. Tabulating and exporting unmatched SNOMED CT codes to identify mapping gaps.
+#
+# Input files:
+# - Patient inclusion list: 'copd_Patid_list_included_all.dta'
+# - SNOMED-to-ICD10 map: 'snomed_to_icd10.dta'
+# - Code browser: 'CPRDAurumMedical.txt'
+# - Observations Parquet files: 'Observations_for_hdps_1.parquet', 'Observations_for_hdps_2.parquet'
+#
+# Output files:
+# - Mapped observations: 'observations_for_hdps_mapped.parquet'
+# - Unmatched observations: 'observations_for_hdps_unmatched.parquet'
+# - Ever-mapped observations: 'observations_for_hdps_ever_mapped.parquet'
+# - Unmatched SNOMED CT codes summary: 'snomed_counts_unmatched.csv'
+
 #######################################
+
 packages <- c("tidyverse",
               "arrow",
               "readstata13",
@@ -63,7 +93,7 @@ obs_ever_mapped <- NULL
 obs_ever_unmatched <- NULL
 
 for (file in obs_files) {
- # file <- obs_files[1]
+
   print(file)
   obs <- arrow::read_parquet(file)
   obs <- setDT(obs)
