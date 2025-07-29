@@ -228,7 +228,6 @@ for (outcome in outcomes) {
         HDPS_folder,
         "/outputs/SMDs_predefined_covariates_",
         outcome, 
-        "_",
         cohort_ext,
         ".csv"
       )

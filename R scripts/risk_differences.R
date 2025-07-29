@@ -40,6 +40,78 @@ set.seed(123)
 setwd(Datadir_copd)
 palette <- met.brewer("Cassatt2")
 
+# Function to calculate risk differences with confidence intervals
+calculate_risk_difference <- function(data, outcome_var, treatment_var, weights = NULL, alpha = 0.05) {
+  
+  # Convert to factors if needed
+  data[[treatment_var]] <- as.factor(data[[treatment_var]])
+  
+  if (is.null(weights)) {
+    # Unweighted analysis
+    risk_table <- data %>%
+      group_by(!!sym(treatment_var)) %>%
+      summarise(
+        n = n(),
+        events = sum(!!sym(outcome_var), na.rm = TRUE),
+        risk = mean(!!sym(outcome_var), na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    # Calculate standard errors for unweighted risks
+    risk_table$se <- sqrt(risk_table$risk * (1 - risk_table$risk) / risk_table$n)
+    
+  } else {
+    # Weighted analysis
+    risk_table <- data %>%
+      group_by(!!sym(treatment_var)) %>%
+      summarise(
+        n = n(),
+        weighted_n = sum(!!sym(weights), na.rm = TRUE),
+        events = sum(!!sym(outcome_var), na.rm = TRUE),
+        weighted_events = sum(!!sym(outcome_var) * !!sym(weights), na.rm = TRUE),
+        risk = sum(!!sym(outcome_var) * !!sym(weights), na.rm = TRUE) / sum(!!sym(weights), na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    # Calculate standard errors for weighted risks using effective sample size
+    risk_table$se <- sqrt(risk_table$risk * (1 - risk_table$risk) / risk_table$weighted_n)
+  }
+  
+  # Extract risks for exposed (1) and unexposed (0) groups
+  risk_unexposed <- risk_table$risk[risk_table[[treatment_var]] == "0"]
+  risk_exposed <- risk_table$risk[risk_table[[treatment_var]] == "1"]
+  
+  # Extract standard errors
+  se_unexposed <- risk_table$se[risk_table[[treatment_var]] == "0"]
+  se_exposed <- risk_table$se[risk_table[[treatment_var]] == "1"]
+  
+  # Calculate risk difference
+  risk_difference <- risk_exposed - risk_unexposed
+  
+  # Calculate standard error of risk difference
+  se_rd <- sqrt(se_unexposed^2 + se_exposed^2)
+  
+  # Calculate confidence interval
+  z_alpha <- qnorm(1 - alpha/2)
+  ci_lower <- risk_difference - z_alpha * se_rd
+  ci_upper <- risk_difference + z_alpha * se_rd
+  
+  # Calculate p-value (two-sided test)
+  z_stat <- risk_difference / se_rd
+  p_value <- 2 * (1 - pnorm(abs(z_stat)))
+  
+  # Return results
+  return(list(
+    risk_unexposed = risk_unexposed,
+    risk_exposed = risk_exposed,
+    risk_difference = risk_difference,
+    se_rd = se_rd,
+    ci_lower = ci_lower,
+    ci_upper = ci_upper,
+    p_value = p_value
+  ))
+}
+
 # Load data -------------------------------------------------------------------
 all_schoenfeld_residuals <- list()
 
@@ -50,6 +122,23 @@ cohort_exts <- c("", "_no_triple")
 for (cohort_ext in cohort_exts) { # Iterate through each cohort
   for (outcome in outcomes) {   # Iterate through each outcome
     
+# cohort_ext <- ""
+# outcome <- "covid_hes_present"
+
+# Initialize risk difference results dataframe
+risk_diff_results <- data.frame(
+  Covariates = character(),
+  Risk_Unexposed = numeric(),
+  Risk_Exposed = numeric(),
+  Risk_Difference = numeric(),
+  SE_RD = numeric(),
+  CI_Lower = numeric(),
+  CI_Upper = numeric(),
+  P_Value = numeric(),
+  OutcomeEvents = numeric(),
+  stringsAsFactors = FALSE
+)
+
     print(paste("Analyzing outcome:", outcome))
     
     timeinstudy <- switch(outcome,
@@ -176,80 +265,10 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       p_value = schoenfeld_residuals$table[, "p"],
       stringsAsFactors = FALSE
     )
-    
-    png(
-      filename = paste0(
-        HDPS_folder,
-        "/outputs/Results/Schoenfeld_",
-        outcome,
-        "_unweighted",
-        cohort_ext,
-        ".png"
-      )
-    )
-    plot(schoenfeld_residuals)
-    dev.off()
-    
+
     # Kaplan-Meier Plot (Unweighted)
     km_fit_unweighted <- survfit(surv_obj ~ treatgroup, data = hdpsPredefinedVars)
     
-    # Plot the Kaplan-Meier curve
-    ggsurvplot <- ggsurvplot(
-      km_fit_unweighted,
-      data = hdpsPredefinedVars,
-      conf.int = T,
-      censor = F,
-      ylim = c(0.97, 1),
-      xlab = "Time in days",
-      risk.table = "absolute",
-      risk.table.title = "Number at risk",
-      cumevents = TRUE,
-      fontsize = 7,
-      tables.height = 0.15,
-      legend.labs = c("LABA/LAMA", "ICS"),
-      legend.title = "",
-      palette = c(palette[4], palette[9]),
-      xlim = c(0, 183)
-    )
-    ggsurvplot$plot <- ggsurvplot$plot + scale_x_continuous(breaks = c(0, 50, 100, 150, 183))
-    ggsurvplot$table$theme$axis.text.y$colour <- "black"
-    ggsurvplot$table$theme$axis.text.y$size <- 24
-    ggsurvplot$table$theme$axis.text.x$size <- 24
-    ggsurvplot$table$labels$x <- ""
-    ggsurvplot$table$theme$plot.title$size <- 28
-    ggsurvplot$cumevents$theme$axis.text.y$colour <- "black"
-    ggsurvplot$cumevents$theme$axis.text.y$size <- 24
-    ggsurvplot$cumevents$theme$axis.text.x$size <- 24
-    ggsurvplot$cumevents$labels$x <- ""
-    ggsurvplot$cumevents$theme$plot.title$size <- 28
-    ggsurvplot$plot$theme$axis.title.x$size <- 28
-    ggsurvplot$plot$theme$axis.title.y$size <- 28
-    ggsurvplot$plot$theme$axis.text.x$size <- 28
-    ggsurvplot$plot$theme$axis.text.y$size <- 28
-    ggsurvplot$plot$theme$legend.text$size <- 28
-    ggsurvplot$plot$theme$legend.key.size <- unit(4, "lines")
-    
-    # Combine the main plot, risk table, and cumulative events
-    combined_plot <- ggarrange(
-      ggsurvplot$plot, 
-      ggsurvplot$table, 
-      ggsurvplot$cumevents,
-      nrow = 3,
-      heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
-    )
-    # Save the combined plot (main plot + risk table + cumulative events)
-    file_path <- file.path(
-      HDPS_folder,
-      "outputs",
-      paste0("km_curve_", outcome, cohort_ext, "_unweighted.png")
-    )
-    ggsave(
-      file_path,
-      combined_plot,
-      width = 30,
-      height = 30,  # Adjust height for all components
-      units = "cm"
-    )
     
     # Unweighted Logistic Regression
     logistic_unweighted <- glm(as.formula(paste(outcome, "~ treatgroup")),
@@ -259,29 +278,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
     # Calculate the residuals
     residuals <- residuals(logistic_unweighted)
     fitted_values <- fitted.values(logistic_unweighted)
-    
-    file_path_resid <- file.path(
-      HDPS_folder,
-      "outputs",
-      "Results",
-      paste0("log_resid_", outcome, cohort_ext, "_unweighted_jittered.png")
-    )
-    png(file_path_resid)
-    
-    # Create a plot of the jittered residuals versus the jittered fitted values
-    plot(
-      jitter(fitted_values, factor = 0.3),
-      jitter(residuals, factor = 10),
-      main = paste("Log residuals for", outcome_label, "(unweighted)"),
-      cex.main = 0.9,
-      xlab = "Fitted values",
-      ylab = "Residuals",
-      pch = 16,
-      cex = 0.5  # Reduce point size for better visibility
-    )
-    abline(h = 0, lty = 2)
-    
-    dev.off()
+
     
     hdps_weighted_predefined <- coxph(
       surv_obj ~ treatgroup,
@@ -296,94 +293,6 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       weights = hdpsPredefinedVars$iptw_weight_predefined
     )
     
-    # Plot the Kaplan-Meier curve
-    ggsurvplot <- ggsurvplot(
-      km_fit_weighted_predefined,
-      data = hdpsPredefinedVars,
-      conf.int = T,
-      censor = F,
-      ylim = c(0.97, 1),
-      xlab = "Time in days",
-      risk.table = "absolute",
-      risk.table.title = "Number at risk",
-      cumevents = TRUE,
-      digits = 2,
-      fontsize = 7,
-      tables.height = 0.15,
-      legend.labs = c("LABA/LAMA", "ICS"),
-      legend.title = "",
-      palette = c(palette[4], palette[9]),
-      xlim = c(0, 183))
-    ggsurvplot$cumevents$layers[[1]]$data$cum.n.event <- round(ggsurvplot$cumevents$layers[[1]]$data$cum.n.event, 2)
-    ggsurvplot$plot <- ggsurvplot$plot + scale_x_continuous(breaks = c(0, 50, 100, 150, 183))
-    ggsurvplot$table$theme$axis.text.y$colour <- "black"
-    ggsurvplot$table$theme$axis.text.y$size <- 24
-    ggsurvplot$table$theme$axis.text.x$size <- 24
-    ggsurvplot$table$labels$x <- ""
-    ggsurvplot$table$theme$plot.title$size <- 28
-    ggsurvplot$cumevents$theme$axis.text.y$colour <- "black"
-    ggsurvplot$cumevents$theme$axis.text.y$size <- 24
-    ggsurvplot$cumevents$theme$axis.text.x$size <- 24
-    ggsurvplot$cumevents$labels$x <- ""
-    ggsurvplot$cumevents$theme$plot.title$size <- 28
-    ggsurvplot$plot$theme$axis.title.x$size <- 28
-    ggsurvplot$plot$theme$axis.title.y$size <- 28
-    ggsurvplot$plot$theme$axis.text.x$size <- 28
-    ggsurvplot$plot$theme$axis.text.y$size <- 28
-    ggsurvplot$plot$theme$legend.text$size <- 28
-    ggsurvplot$plot$theme$legend.key.size <- unit(4, "lines")
-    
-    # Save the main plot
-    file_path <- file.path(
-      HDPS_folder,
-      "outputs",
-      paste0(
-        "km_curve_",
-        outcome,
-        cohort_ext,
-        "_weighted_predefined.png"
-      )
-    )
-    # Combine the main plot, risk table, and cumulative events
-    combined_plot <- ggarrange(
-      ggsurvplot$plot, 
-      ggsurvplot$table, 
-      ggsurvplot$cumevents,
-      nrow = 3,
-      heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
-    )
-    ggsave(
-      file_path,
-      combined_plot,
-      width = 30,
-      height = 30,
-      units = "cm")
-    
-    #plot schoenfeld residuals
-    schoenfeld_residuals <- cox.zph(hdps_weighted_predefined)
-    
-    all_schoenfeld_residuals[[paste("Predefined", cohort_ext, outcome)]] <- data.frame(
-      model = "predefined",
-      cohort = cohort_ext,
-      outcome = outcome,
-      covariate = rownames(schoenfeld_residuals$table),
-      p_value = schoenfeld_residuals$table[, "p"],
-      stringsAsFactors = FALSE
-    )
-    
-    png(
-      filename = paste0(
-        HDPS_folder,
-        "/outputs/Results/Schoenfeld_",
-        outcome,
-        "_predefined",
-        cohort_ext,
-        ".png"
-      )
-    )
-    plot(schoenfeld_residuals)
-    dev.off()
-    
     # Weighted Logistic Regression (Predefined)
     logistic_weighted_predefined <- glm(
       as.formula(paste(outcome, "~ treatgroup")),
@@ -396,33 +305,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
     residuals <- residuals(logistic_weighted_predefined)
     fitted_values <- fitted.values(logistic_weighted_predefined)
     
-    file_path_resid <- file.path(
-      HDPS_folder,
-      "outputs",
-      "Results",
-      paste0("log_resid_", outcome, cohort_ext, "_predefined_jittered.png")
-    )
-    png(file_path_resid)
-    
-    # Create a plot of the jittered residuals versus the jittered fitted values
-    plot(
-      jitter(fitted_values, factor = 0.3),
-      jitter(residuals, factor = 10),
-      main = paste(
-        "Log residuals for",
-        outcome_label,
-        "(weighted using prespecified covariates)"
-      ),
-      cex.main = 0.9,
-      xlab = "Fitted values",
-      ylab = "Residuals",
-      pch = 16,
-      cex = 0.5  # Reduce point size for better visibility
-    )
-    abline(h = 0, lty = 2)
-    
-    dev.off()
-    
+
     #get number of events
     num_events <- hdpsPredefinedVars %>%
       filter(!!sym(outcome) == 1) %>%
@@ -452,7 +335,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
                            Covariates = "Unweighted",
                            Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE),
                            OutcomeEvents = num_events))
-
+    
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Prespecified covariates",
@@ -464,12 +347,51 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
                                 Covariates = "Unweighted",
                                 Results = ShowRegTable(logistic_unweighted, printToggle = FALSE),
                                 OutcomeEvents = num_events))
-
+    
     logistic_results <- rbind(logistic_results,
                               data.frame(
                                 Covariates = "Prespecified covariates",
                                 Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE),
                                 OutcomeEvents = num_weighted_events))
+    
+    # Calculate risk differences for unweighted analysis
+    rd_unweighted <- calculate_risk_difference(
+      data = hdpsPredefinedVars,
+      outcome_var = outcome,
+      treatment_var = "treatgroup"
+    )
+    
+    risk_diff_results <- rbind(risk_diff_results, data.frame(
+      Covariates = "Unweighted",
+      Risk_Unexposed = rd_unweighted$risk_unexposed,
+      Risk_Exposed = rd_unweighted$risk_exposed,
+      Risk_Difference = rd_unweighted$risk_difference,
+      SE_RD = rd_unweighted$se_rd,
+      CI_Lower = rd_unweighted$ci_lower,
+      CI_Upper = rd_unweighted$ci_upper,
+      P_Value = rd_unweighted$p_value,
+      OutcomeEvents = num_events
+    ))
+    
+    # Calculate risk differences for predefined covariates weighted analysis
+    rd_predefined <- calculate_risk_difference(
+      data = hdpsPredefinedVars,
+      outcome_var = outcome,
+      treatment_var = "treatgroup",
+      weights = "iptw_weight_predefined"
+    )
+    
+    risk_diff_results <- rbind(risk_diff_results, data.frame(
+      Covariates = "Prespecified covariates",
+      Risk_Unexposed = rd_predefined$risk_unexposed,
+      Risk_Exposed = rd_predefined$risk_exposed,
+      Risk_Difference = rd_predefined$risk_difference,
+      SE_RD = rd_predefined$se_rd,
+      CI_Lower = rd_predefined$ci_lower,
+      CI_Upper = rd_predefined$ci_upper,
+      P_Value = rd_predefined$p_value,
+      OutcomeEvents = num_weighted_events
+    ))
     
     for (k in topVars) {
       
@@ -525,96 +447,6 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
         robust = TRUE
       )
       
-      # Kaplan-Meier Plot (Unweighted)
-      km_fit_weighted_HDPS <- survfit(surv_obj ~ treatgroup,
-                                      data = hdpsData,
-                                      weights = iptw_weight)
-      
-      # Plot the Kaplan-Meier curve
-      ggsurvplot <- ggsurvplot(
-        km_fit_weighted_HDPS,
-        data = hdpsData,
-        conf.int = T,
-        censor = F,
-        ylim = c(0.97, 1),
-        xlab = "Time in days",
-        risk.table = "absolute",
-        risk.table.title = "Number at risk",
-        cumevents = TRUE,
-        fontsize = 7,
-        tables.height = 0.15,
-        legend.labs = c("LABA/LAMA", "ICS"),
-        legend.title = "",
-        palette = c(palette[4], palette[9]),
-        xlim = c(0, 183)
-      )
-      ggsurvplot$cumevents$layers[[1]]$data$cum.n.event <- round(ggsurvplot$cumevents$layers[[1]]$data$cum.n.event, 2)
-      ggsurvplot$plot <- ggsurvplot$plot + scale_x_continuous(breaks = c(0, 50, 100, 150, 183))
-      ggsurvplot$table$theme$axis.text.y$colour <- "black"
-      ggsurvplot$table$theme$axis.text.y$size <- 24
-      ggsurvplot$table$theme$axis.text.x$size <- 24
-      ggsurvplot$table$labels$x <- ""
-      ggsurvplot$table$theme$plot.title$size <- 28
-      ggsurvplot$cumevents$theme$axis.text.y$colour <- "black"
-      ggsurvplot$cumevents$theme$axis.text.y$size <- 24
-      ggsurvplot$cumevents$theme$axis.text.x$size <- 24
-      ggsurvplot$cumevents$labels$x <- ""
-      ggsurvplot$cumevents$theme$plot.title$size <- 28
-      ggsurvplot$plot$theme$axis.title.x$size <- 28
-      ggsurvplot$plot$theme$axis.title.y$size <- 28
-      ggsurvplot$plot$theme$axis.text.x$size <- 28
-      ggsurvplot$plot$theme$axis.text.y$size <- 28
-      ggsurvplot$plot$theme$legend.text$size <- 28
-      ggsurvplot$plot$theme$legend.key.size <- unit(4, "lines")
-      
-      # Save the main plot
-      file_path <- file.path(
-        HDPS_folder,
-        "outputs",
-        paste0("km_curve_", outcome, "_", k, "_HDPS", cohort_ext, ".png")
-      )
-      # Combine the main plot, risk table, and cumulative events
-      combined_plot <- ggarrange(
-        ggsurvplot$plot, 
-        ggsurvplot$table, 
-        ggsurvplot$cumevents,
-        nrow = 3,
-        heights = c(2, 0.6, 0.6)  # Adjust height ratios as needed
-      )
-      ggsave(
-        file_path,
-        combined_plot,
-        width = 30,
-        height = 30,
-        units = "cm")
-    
-      #plot schoenfeld residuals
-      schoenfeld_residuals <- cox.zph(hdpsWeighted)
-      
-      all_schoenfeld_residuals[[paste0("HDPS_", k, cohort_ext, outcome)]] <- data.frame(
-        model = paste0("HDPS", k),
-        cohort = cohort_ext,
-        outcome = outcome,
-        covariate = rownames(schoenfeld_residuals$table),
-        p_value = schoenfeld_residuals$table[, "p"],
-        stringsAsFactors = FALSE
-      )
-      
-      png(
-        filename = paste0(
-          HDPS_folder,
-          "/outputs/Results/Schoenfeld_",
-          outcome,
-          "_",
-          k,
-          "_HDPS",
-          cohort_ext,
-          ".png"
-        )
-      )
-      plot(schoenfeld_residuals)
-      dev.off()
-      
       #get weighted event count
       event_count <- hdpsData %>%
         filter(!!sym(outcome) == 1) %>%
@@ -641,36 +473,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       residuals <- residuals(logistic_weighted)
       fitted_values <- fitted.values(logistic_weighted)
       
-      file_path_resid <- file.path(
-        HDPS_folder,
-        "outputs",
-        "Results",
-        paste0("log_resid_", outcome, "_HDPS_", k, cohort_ext, "_jittered.png")
-      )
-      png(file_path_resid)
       
-      # Create a plot of the jittered residuals versus the jittered fitted values
-      plot(
-        jitter(fitted_values, factor = 0.3),
-        jitter(residuals, factor = 10),
-        main = paste(
-          "Log residuals for",
-          outcome_label,
-          "(weighted using",
-          k,
-          "covariates)"
-        ),
-        cex.main = 0.9,
-        xlab = "Fitted values",
-        ylab = "Residuals",
-        pch = 16,
-        # Use solid circles for points
-        cex = 0.5  # Reduce point size for better visibility
-      )
-      abline(h = 0, lty = 2)
-      
-      dev.off()
-
       # Add results to the logistic_results dataframe
       logistic_results <- rbind(
         logistic_results,
@@ -680,9 +483,30 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
           OutcomeEvents = event_count
         )
       )
-
+      
       # remove rows with the rowname Intercept from the logistic regression results
       logistic_results <- logistic_results[!grepl("Intercept", rownames(logistic_results)), ]
+      
+      # Calculate risk differences for HDPS weighted analysis
+      rd_hdps <- calculate_risk_difference(
+        data = hdpsData,
+        outcome_var = outcome,
+        treatment_var = "treatgroup",
+        weights = "iptw_weight"
+      )
+      
+      risk_diff_results <- rbind(risk_diff_results, data.frame(
+        Covariates = as.character(k),
+        Risk_Unexposed = rd_hdps$risk_unexposed,
+        Risk_Exposed = rd_hdps$risk_exposed,
+        Risk_Difference = rd_hdps$risk_difference,
+        SE_RD = rd_hdps$se_rd,
+        CI_Lower = rd_hdps$ci_lower,
+        CI_Upper = rd_hdps$ci_upper,
+        P_Value = rd_hdps$p_value,
+        OutcomeEvents = event_count
+      ))
+      
     }
     
     # Clean up
@@ -710,11 +534,13 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       "logistic_results",
       "smd_combined",
       "HDPS_github",
-      "all_schoenfeld_residuals"
+      "all_schoenfeld_residuals",
+      "risk_diff_results",
+      "calculate_risk_difference"
     )])
     
     # Output data -------------------------------------------------------------
-    # After the loop for k, combine all results and write to a single file
+    # combine all results and write to a single file
     combined_results <- do.call(rbind, all_results)
     logistic_combined_results <- do.call(rbind, logistic_results)
     
@@ -736,6 +562,18 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       paste0(
         HDPS_folder,
         "/outputs/Results/HDPS_Logistic_Results_",
+        outcome,
+        cohort_ext,
+        ".csv"
+      )
+    )
+    
+    # Write risk difference results to CSV file
+    write_csv(
+      risk_diff_results,
+      paste0(
+        HDPS_folder,
+        "/outputs/Results/HDPS_Risk_Differences_",
         outcome,
         cohort_ext,
         ".csv"

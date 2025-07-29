@@ -3,11 +3,17 @@
 # Programmer name: Marleen Bokern
 # Date Started:  05/24
 #############################  
-# 
+# This script extracts and processes data for the COPD cohort during the 
+# 12-month lookback period before 01 March 2020, including:
+# - Reading observation and prescription files for patients in the COPD cohort,
+#   filtering by relevant date ranges, and saving the results as Parquet files
+# - Reading HES inpatient diagnosis data within the same lookback window
+# - saves intermediate outputs for use in 
+#   high-dimensional propensity score (HDPS) analysis
 #############################
 
 
-packages <- c("tidyverse", "MetBrewer", "arrow", "readstata13", "bench")
+packages <- c("tidyverse", "arrow", "readstata13")
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
   install.packages(packages[!installed_packages])
@@ -17,10 +23,9 @@ invisible(lapply(packages, function(pkg) {
   suppressMessages(library(pkg, character.only = TRUE, verbose = FALSE))
 }))
 
-palette <- met.brewer("Cassatt2")
-
 setwd(Datadir_copd)
 
+#set number of observation and drug issue files
 n_obs_files <- 48
 n_drug_files <- 49
   
