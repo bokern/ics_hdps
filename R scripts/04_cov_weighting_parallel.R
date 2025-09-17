@@ -9,6 +9,7 @@
 #                                  3. Propensity score matching and evaluation
 #                                  4. Estimate the treatment effect
 #this code uses parallelisation to speed up the weighting
+# the predefined loop is only run for the first hdps iteration
 # -----------------------------------------------------------------------------
 # Flag to enable debugging; if TRUE, script will only be run on 1,000 patients
 # selected at random
@@ -53,17 +54,26 @@ palette <- met.brewer("Cassatt2")
 # Assign priority of select to dplyr
 select <- dplyr::select
 
-topVars <- c("100", "250", "500", "750", "1000")
+topVars <- c("100", "250", "500", "750", "1000")  
 outcomes <- c("covid_hes_present", "covid_death_present")
 cohort_exts <- c("", "_no_triple")
 
+
+#for the predefined variables, we need to run the code once for each outcome and cohort
+# 
+# for (outcome in outcomes) {
+#   for (cohort_ext in cohort_exts) {
+      
+    
 
 cov_weighting <- function(params) {
   cohort_ext <- params$cohort_ext
   outcome <- params$outcome
   k <- params$topVar
   
-  print(paste("Analyzing outcome:", outcome))
+  # cohort_ext <- ""
+  # outcome <- "covid_hes_present"
+  # k <- "100"
   
   timeinstudy <- switch(outcome,
                         "covid_hes_present" = "timeinstudy2",
@@ -146,6 +156,8 @@ cov_weighting <- function(params) {
   
   hdpsCohort <- pat_summary_data %>% dplyr::select(all_of(c("patid", "treatgroup", outcome)))
   
+
+    
   #Create pscores and a model based on the predefined variables only
   predefined_vars <- setdiff(names(hdpsCovariates), "patid")
   
@@ -191,6 +203,8 @@ cov_weighting <- function(params) {
     filter(pscore_predefined < ps_trim$min |
              pscore_predefined > ps_trim$max)
   
+  #only run this once for each outcome and cohort
+  if (k == topVars[1]) {
   #save total number of people outside of common support, number of people outside of common support in each treatment group and their weights
   hdpsOutOfSupportSummary_predefined <- hdpsOutOfSupport_predefined %>%
     group_by(treatgroup) %>%
@@ -230,10 +244,114 @@ cov_weighting <- function(params) {
     ),
   )
   
+  Predefined_weight_summary_before <- hdpsPredefinedVars %>%
+    group_by(treatgroup) %>%
+    summarise(
+      n_before = n(),
+      sum_weight_before = sum(iptw_weight_predefined),
+      avg_weight_before = mean(iptw_weight_predefined),
+      median_weight_before = median(iptw_weight_predefined),
+      min_weight_before = min(iptw_weight_predefined),
+      max_weight_before = max(iptw_weight_predefined),
+      p25_weight_before = quantile(iptw_weight_predefined, 0.25),
+      p75_weight_before = quantile(iptw_weight_predefined, 0.75)
+    )
+  
   #count  people outside of common support
   hdpsPredefinedVars <- hdpsPredefinedVars %>%
     filter(pscore_predefined >= ps_trim$min &
              pscore_predefined <= ps_trim$max)
+  
+  Predefined_weight_summary_after <- hdpsPredefinedVars %>%
+    filter(pscore_predefined >= ps_trim$min &
+             pscore_predefined <= ps_trim$max) %>%
+    group_by(treatgroup) %>%
+    summarise(
+      n_after = n(),
+      sum_weight_after = sum(iptw_weight_predefined),
+      avg_weight_after = mean(iptw_weight_predefined),
+      median_weight_after = median(iptw_weight_predefined),
+      min_weight_after = min(iptw_weight_predefined),
+      max_weight_after = max(iptw_weight_predefined),
+      p25_weight_after = quantile(iptw_weight_predefined, 0.25),
+      p75_weight_after = quantile(iptw_weight_predefined, 0.75)
+    )
+  
+  # Combine before and after summaries into a single row
+  Predefined_weight_summary <- tibble(
+    cohort = cohort_ext,
+    outcome = outcome,
+    k = 0,
+    
+    # Before trimming - ICS group
+    n_before_ics = Predefined_weight_summary_before$n_before[Predefined_weight_summary_before$treatgroup == 1],
+    sum_weight_before_ics = Predefined_weight_summary_before$sum_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    avg_weight_before_ics = Predefined_weight_summary_before$avg_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    median_weight_before_ics = Predefined_weight_summary_before$median_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    min_weight_before_ics = Predefined_weight_summary_before$min_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    max_weight_before_ics = Predefined_weight_summary_before$max_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    p25_weight_before_ics = Predefined_weight_summary_before$p25_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    p75_weight_before_ics = Predefined_weight_summary_before$p75_weight_before[Predefined_weight_summary_before$treatgroup == 1],
+    
+    # Before trimming - LABA/LAMA group
+    n_before_labalama = Predefined_weight_summary_before$n_before[Predefined_weight_summary_before$treatgroup == 0],
+    sum_weight_before_labalama = Predefined_weight_summary_before$sum_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    avg_weight_before_labalama = Predefined_weight_summary_before$avg_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    median_weight_before_labalama = Predefined_weight_summary_before$median_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    min_weight_before_labalama = Predefined_weight_summary_before$min_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    max_weight_before_labalama = Predefined_weight_summary_before$max_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    p25_weight_before_labalama = Predefined_weight_summary_before$p25_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    p75_weight_before_labalama = Predefined_weight_summary_before$p75_weight_before[Predefined_weight_summary_before$treatgroup == 0],
+    
+    # After trimming - ICS group
+    n_after_ics = Predefined_weight_summary_after$n_after[Predefined_weight_summary_after$treatgroup == 1],
+    sum_weight_after_ics = Predefined_weight_summary_after$sum_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    avg_weight_after_ics = Predefined_weight_summary_after$avg_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    median_weight_after_ics = Predefined_weight_summary_after$median_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    min_weight_after_ics = Predefined_weight_summary_after$min_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    max_weight_after_ics = Predefined_weight_summary_after$max_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    p25_weight_after_ics = Predefined_weight_summary_after$p25_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    p75_weight_after_ics = Predefined_weight_summary_after$p75_weight_after[Predefined_weight_summary_after$treatgroup == 1],
+    
+    # After trimming - LABA/LAMA group
+    n_after_labalama = Predefined_weight_summary_after$n_after[Predefined_weight_summary_after$treatgroup == 0],
+    sum_weight_after_labalama = Predefined_weight_summary_after$sum_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    avg_weight_after_labalama = Predefined_weight_summary_after$avg_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    median_weight_after_labalama = Predefined_weight_summary_after$median_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    min_weight_after_labalama = Predefined_weight_summary_after$min_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    max_weight_after_labalama = Predefined_weight_summary_after$max_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    p25_weight_after_labalama = Predefined_weight_summary_after$p25_weight_after[Predefined_weight_summary_after$treatgroup == 0],
+    p75_weight_after_labalama = Predefined_weight_summary_after$p75_weight_after[Predefined_weight_summary_after$treatgroup == 0]
+  )
+  
+  # Add calculated fields
+  Predefined_weight_summary <- Predefined_weight_summary %>%
+    mutate(
+      # Calculate percent removed for each group
+      p_removed_ics = ((n_before_ics - n_after_ics) / n_before_ics),
+      p_removed_labalama = ((n_before_labalama - n_after_labalama) / n_before_labalama),
+      
+      # Total metrics
+      total_n_before = n_before_ics + n_before_labalama,
+      total_n_after = n_after_ics + n_after_labalama,
+      p_removed = ((total_n_before - total_n_after) / total_n_before)
+    )
+  
+  # Save the summary to csv
+  file_path_summary <- file.path(
+    HDPS_folder,
+    "outputs",
+    paste0(
+      ifelse(debugMode, "debug_", ""),
+      "HDPS_predefined_",
+      outcome,
+      cohort_ext,
+      "_weight_summary.csv"
+    )
+  )
+  write_csv(Predefined_weight_summary, file_path_summary)
+  
+  rm(Predefined_weight_summary_before, Predefined_weight_summary_after)
   
   # Merge follow-up times into hdpsPredefinedVars
   hdpsPredefinedVars[[timeinstudy]] <- follow_up_times[[timeinstudy]][match(hdpsPredefinedVars$patid, follow_up_times$patid)]
@@ -269,7 +387,6 @@ cov_weighting <- function(params) {
   # Vector of categorical variables that need transformation
   catVars <- all_vars_table[!all_vars_table %in% c("age_index", "pscore_predefined")]
   
-  if (k == topVars[1]) {
     # Create survey design for predefined variables
     svy_design_predefined <- svydesign(
       ids = ~ 1,
@@ -331,16 +448,16 @@ cov_weighting <- function(params) {
       width = 3
     )
     
-    saveRDS(
-      iptw_plot_predefined  + theme_minimal(base_size = 12),
-      file = paste0(
-        HDPS_folder,
-        "/outputs/Predefined_overlapUnweighted_",
-        outcome,
-        cohort_ext,
-        ".rds"
-      )
-    )
+    # saveRDS(
+    #   iptw_plot_predefined  + theme_minimal(base_size = 12),
+    #   file = paste0(
+    #     HDPS_folder,
+    #     "/outputs/Predefined_overlapUnweighted_",
+    #     outcome,
+    #     cohort_ext,
+    #     ".rds"
+    #   )
+    # )
     
     # Plot overlap with IPTW for predefined covariates
     iptw_plot_predefined <- hdpsPredefinedVars %>%
@@ -368,17 +485,18 @@ cov_weighting <- function(params) {
       width = 3
     )
     
-    saveRDS(
-      iptw_plot_predefined  + theme_minimal(base_size = 12),
-      file = paste0(
-        HDPS_folder,
-        "/outputs/Predefined_overlapWeighted_",
-        outcome,
-        cohort_ext,
-        "_trimmed.rds"
-      )
-    )
+    # saveRDS(
+    #   iptw_plot_predefined  + theme_minimal(base_size = 12),
+    #   file = paste0(
+    #     HDPS_folder,
+    #     "/outputs/Predefined_overlapWeighted_",
+    #     outcome,
+    #     cohort_ext,
+    #     "_trimmed.rds"
+    #   )
+    # )
   }
+  
   # HDPS WEIGHTING ----------------------------------------------------------
   
   # Load hdpsData
@@ -497,6 +615,19 @@ cov_weighting <- function(params) {
   # Add the stabilized weights to the dataset
   hdpsData$iptw_weight <- ate_stabilized$weights
   hdpsData <- hdpsData %>% dplyr::select(patid, pscore, iptw_weight, everything())
+
+  #plot the iptws by treatment groups
+  iptw_plot <- ggplot(hdpsData, aes(x = iptw_weight, fill = treatgroup)) +
+    geom_histogram(aes(y = ..density..), bins = 30, alpha = 0.5) +
+    geom_density(aes(y = ..density..), alpha = 0.5) +
+    scale_fill_manual(values = palette[c(9, 4)]) +
+    labs(
+      title = paste0("IPTW by treatment group: ", outcome),
+      x = "IPTW",
+      y = "Density"
+    ) +
+    theme_minimal() +
+    theme(legend.title = element_blank())
   
   #put people outside of common support in a separate dataframe
   hdpsOutOfSupport_hdps <- hdpsData %>%
@@ -546,9 +677,129 @@ cov_weighting <- function(params) {
     ),
   )
   
+  
+  # For HDPS section, add right after calculating the iptw_weight:
+  hdpsData_weight_summary_before <- hdpsData %>%
+    group_by(treatgroup) %>%
+    summarise(
+      n_before = n(),
+      sum_weight_before = sum(iptw_weight),
+      avg_weight_before = mean(iptw_weight),
+      median_weight_before = median(iptw_weight),
+      min_weight_before = min(iptw_weight),
+      max_weight_before = max(iptw_weight),
+      p25_weight_before = quantile(iptw_weight, 0.25),
+      p75_weight_before = quantile(iptw_weight, 0.75)
+    )
+  
   #exclude people outside of common support
   hdpsData <- hdpsData %>%
     filter(pscore >= ps_trim$min & pscore <= ps_trim$max)
+  
+  # Then after trimming, add:
+  hdpsData_weight_summary_after <- hdpsData %>%
+    filter(pscore >= ps_trim$min & pscore <= ps_trim$max) %>%
+    group_by(treatgroup) %>%
+    summarise(
+      n_after = n(),
+      sum_weight_after = sum(iptw_weight),
+      avg_weight_after = mean(iptw_weight),
+      median_weight_after = median(iptw_weight),
+      min_weight_after = min(iptw_weight),
+      max_weight_after = max(iptw_weight),
+      p25_weight_after = quantile(iptw_weight, 0.25),
+      p75_weight_after = quantile(iptw_weight, 0.75)
+    )
+  
+  # Create weight summary for HDPS
+  hdpsData_weight_summary <- tibble(
+    cohort = cohort_ext,
+    outcome = outcome,
+    k = k,
+    
+    # Before trimming - ICS group
+    n_before_ics = hdpsData_weight_summary_before$n_before[hdpsData_weight_summary_before$treatgroup == 1],
+    sum_weight_before_ics = hdpsData_weight_summary_before$sum_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    avg_weight_before_ics = hdpsData_weight_summary_before$avg_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    median_weight_before_ics = hdpsData_weight_summary_before$median_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    min_weight_before_ics = hdpsData_weight_summary_before$min_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    max_weight_before_ics = hdpsData_weight_summary_before$max_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    p25_weight_before_ics = hdpsData_weight_summary_before$p25_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    p75_weight_before_ics = hdpsData_weight_summary_before$p75_weight_before[hdpsData_weight_summary_before$treatgroup == 1],
+    
+    # Before trimming - LABA/LAMA group
+    n_before_labalama = hdpsData_weight_summary_before$n_before[hdpsData_weight_summary_before$treatgroup == 0],
+    sum_weight_before_labalama = hdpsData_weight_summary_before$sum_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    avg_weight_before_labalama = hdpsData_weight_summary_before$avg_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    median_weight_before_labalama = hdpsData_weight_summary_before$median_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    min_weight_before_labalama = hdpsData_weight_summary_before$min_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    max_weight_before_labalama = hdpsData_weight_summary_before$max_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    p25_weight_before_labalama = hdpsData_weight_summary_before$p25_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    p75_weight_before_labalama = hdpsData_weight_summary_before$p75_weight_before[hdpsData_weight_summary_before$treatgroup == 0],
+    
+    # After trimming - ICS group
+    n_after_ics = hdpsData_weight_summary_after$n_after[hdpsData_weight_summary_after$treatgroup == 1],
+    sum_weight_after_ics = hdpsData_weight_summary_after$sum_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    avg_weight_after_ics = hdpsData_weight_summary_after$avg_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    median_weight_after_ics = hdpsData_weight_summary_after$median_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    min_weight_after_ics = hdpsData_weight_summary_after$min_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    max_weight_after_ics = hdpsData_weight_summary_after$max_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    p25_weight_after_ics = hdpsData_weight_summary_after$p25_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    p75_weight_after_ics = hdpsData_weight_summary_after$p75_weight_after[hdpsData_weight_summary_after$treatgroup == 1],
+    
+    # After trimming - LABA/LAMA group
+    n_after_labalama = hdpsData_weight_summary_after$n_after[hdpsData_weight_summary_after$treatgroup == 0],
+    sum_weight_after_labalama = hdpsData_weight_summary_after$sum_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    avg_weight_after_labalama = hdpsData_weight_summary_after$avg_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    median_weight_after_labalama = hdpsData_weight_summary_after$median_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    min_weight_after_labalama = hdpsData_weight_summary_after$min_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    max_weight_after_labalama = hdpsData_weight_summary_after$max_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    p25_weight_after_labalama = hdpsData_weight_summary_after$p25_weight_after[hdpsData_weight_summary_after$treatgroup == 0],
+    p75_weight_after_labalama = hdpsData_weight_summary_after$p75_weight_after[hdpsData_weight_summary_after$treatgroup == 0]
+  ) %>%
+    mutate(
+      # Calculate percent removed for each group
+      percent_removed_ics = ((n_before_ics - n_after_ics) / n_before_ics),
+      percent_removed_labalama = ((n_before_labalama - n_after_labalama) / n_before_labalama),
+      
+      # Total metrics
+      total_n_before = n_before_ics + n_before_labalama,
+      total_n_after = n_after_ics + n_after_labalama,
+      total_percent_removed = ((total_n_before - total_n_after) / total_n_before)
+    )
+  
+  
+  # Add calculated fields
+  hdpsData_weight_summary <- hdpsData_weight_summary %>%
+    mutate(
+      # Calculate percent removed for each group
+      p_removed_ics = ((n_before_ics - n_after_ics) / n_before_ics),
+      p_removed_labalama = ((n_before_labalama - n_after_labalama) / n_before_labalama),
+      
+      # Total metrics
+      total_n_before = n_before_ics + n_before_labalama,
+      total_n_after = n_after_ics + n_after_labalama,
+      p_removed = ((total_n_before - total_n_after) / total_n_before)
+    )
+  
+  # Save the summary to csv
+  file_path_summary <- file.path(
+    HDPS_folder,
+    "outputs",
+    paste0(
+      ifelse(debugMode, "debug_", ""),
+      "HDPS_",
+      k,
+      "_",
+      outcome,
+      cohort_ext,
+      "_weight_summary.csv"
+    )
+  )
+  write_csv(hdpsData_weight_summary, file_path_summary)
+  
+  #remove hdpsData_weight_summary_before and hdpData_weight_summary_after
+  rm(hdpsData_weight_summary_before, hdpsData_weight_summary_after)
   
   # Original propensity score distribution plot (unweighted)
   plot_ps_dist <- ggplot(hdpsData, aes(x = pscore, color = factor(treatgroup))) +
@@ -585,18 +836,18 @@ cov_weighting <- function(params) {
     width = 4.5
   )
   
-  saveRDS(
-    plot_ps_dist + theme_minimal(base_size = 12),
-    file = paste0(
-      HDPS_folder,
-      "/outputs/covariates_HDPS_",
-      k,
-      "_overlapUnweighted_",
-      outcome,
-      cohort_ext,
-      ".rds"
-    )
-  )
+  # saveRDS(
+  #   plot_ps_dist + theme_minimal(base_size = 12),
+  #   file = paste0(
+  #     HDPS_folder,
+  #     "/outputs/covariates_HDPS_",
+  #     k,
+  #     "_overlapUnweighted_",
+  #     outcome,
+  #     cohort_ext,
+  #     ".rds"
+  #   )
+  # )
   # IPTW Propensity Score Weighting  ----------------------------------------------
   
   #percentage of poeple in treatment group 1
@@ -652,18 +903,18 @@ cov_weighting <- function(params) {
     height = 3
   )
   
-  saveRDS(
-    plot_weight_dist + theme_minimal(base_size = 12),
-    file = paste0(
-      HDPS_folder,
-      "/outputs/HDPS_weight_dist_",
-      k,
-      "_",
-      outcome,
-      cohort_ext,
-      "_trimmed.rds"
-    )
-  )
+  # saveRDS(
+  #   plot_weight_dist + theme_minimal(base_size = 12),
+  #   file = paste0(
+  #     HDPS_folder,
+  #     "/outputs/HDPS_weight_dist_",
+  #     k,
+  #     "_",
+  #     outcome,
+  #     cohort_ext,
+  #     "_trimmed.rds"
+  #   )
+  # )
   
   # Create a survey design object
   svy_design <- svydesign(ids = ~ 1,
@@ -742,18 +993,18 @@ cov_weighting <- function(params) {
     width = 4.5
   )
   
-  saveRDS(
-    iptw_plot + theme_minimal(base_size = 12),
-    file = paste0(
-      HDPS_folder,
-      "/outputs/covariates_HDPS_",
-      k,
-      "_overlapWeighted_",
-      outcome,
-      cohort_ext,
-      "_trimmed.rds"
-    )
-  )
+  # saveRDS(
+  #   iptw_plot + theme_minimal(base_size = 12),
+  #   file = paste0(
+  #     HDPS_folder,
+  #     "/outputs/covariates_HDPS_",
+  #     k,
+  #     "_overlapWeighted_",
+  #     outcome,
+  #     cohort_ext,
+  #     "_trimmed.rds"
+  #   )
+  # )
   #merge in iptw_weight_predefined from hdpsPredefinedVars
   hdpsData <- hdpsData %>%
     left_join(hdpsPredefinedVars %>%
@@ -887,10 +1138,10 @@ results <- future_pmap(params, ~ cov_weighting(tibble(
   topVar = ..3
 )), .options = furrr_options(seed = TRUE))
 
-# import all trimming_results.csv files from hdps_foler/outputs and append them into one dataframe
+# import all trimming_results.csv files from hdps_folder/outputs and append them into one dataframe
 trimming_results <- list.files(
   path = paste0(HDPS_folder, "/outputs"),
-  pattern = "trimming_results.csv",
+  pattern = "weight_summary.csv",
   full.names = TRUE
 )
 
@@ -900,4 +1151,4 @@ trimming_results_full <- lapply(trimming_results, function(x) {
   #bind rows with the first row as column names
   bind_rows() %>%
   #export to csv
-  write_csv(paste0(HDPS_folder, "/outputs/trimming_results_full.csv"))
+  write_csv(paste0(HDPS_folder, "/outputs/weight_summary_full.csv"))
