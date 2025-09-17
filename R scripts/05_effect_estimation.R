@@ -450,25 +450,25 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Unweighted",
-                           Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE),
+                           Results = ShowRegTable(PredefinedUnweighted, printToggle = FALSE, digits = 4),
                            OutcomeEvents = num_events))
-
+    
     all_results <- rbind(all_results,
                          data.frame(
                            Covariates = "Prespecified covariates",
-                           Results = ShowRegTable(hdps_weighted_predefined, printToggle = FALSE),
+                           Results = ShowRegTable(hdps_weighted_predefined, printToggle = FALSE, digits = 4),
                            OutcomeEvents = num_weighted_events))
     
     logistic_results <- rbind(logistic_results,
                               data.frame(
                                 Covariates = "Unweighted",
-                                Results = ShowRegTable(logistic_unweighted, printToggle = FALSE),
+                                Results = ShowRegTable(logistic_unweighted, printToggle = FALSE, digits = 4),
                                 OutcomeEvents = num_events))
-
+    
     logistic_results <- rbind(logistic_results,
                               data.frame(
                                 Covariates = "Prespecified covariates",
-                                Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE),
+                                Results = ShowRegTable(logistic_weighted_predefined, printToggle = FALSE, digits = 4),
                                 OutcomeEvents = num_weighted_events))
     
     for (k in topVars) {
@@ -587,7 +587,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
         width = 30,
         height = 30,
         units = "cm")
-    
+      
       #plot schoenfeld residuals
       schoenfeld_residuals <- cox.zph(hdpsWeighted)
       
@@ -670,7 +670,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
       abline(h = 0, lty = 2)
       
       dev.off()
-
+      
       # Add results to the logistic_results dataframe
       logistic_results <- rbind(
         logistic_results,
@@ -680,7 +680,7 @@ for (cohort_ext in cohort_exts) { # Iterate through each cohort
           OutcomeEvents = event_count
         )
       )
-
+      
       # remove rows with the rowname Intercept from the logistic regression results
       logistic_results <- logistic_results[!grepl("Intercept", rownames(logistic_results)), ]
     }
