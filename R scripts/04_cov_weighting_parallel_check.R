@@ -1,13 +1,14 @@
 # -----------------------------------------------------------------------------
-# PROGRAM NAME:  04_cov_weighting_parallel
+# PROGRAM NAME:  04_cov_weighting_parallel_check
 # PROJECT:      
-# AUTHOR:        John Tazare, Marleen Bokern
+# AUTHOR:        John Tazare, adapted by Marleen Bokern
 # DATE CREATED:   10 Sep 2020
 # NOTES:        high-dimensional Propensity Score Analysis
 #                                  1. Summarise baseline covariates
 #                                  2. Estimate propensity score
 #                                  3. Propensity score matching and evaluation
 #                                  4. Estimate the treatment effect
+#This code is a sensitivity analysis that checks the top 1-250 covariates one by one
 #this code uses parallelisation to speed up the weighting
 # -----------------------------------------------------------------------------
 # Flag to enable debugging; if TRUE, script will only be run on 1,000 patients
